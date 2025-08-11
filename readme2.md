@@ -17,3 +17,8 @@
 
 КАЖДЫЙ РАЗ ПЕРЕД РАБОТОЙ:
     source venv/bin/activate
+
+Git:
+1. git clone https://github.com/belkagoyda/orex-workspace
+2. Слева выбрать Source Control, нажать Commit + Push
+3. Перейти на гитхаб, авторизоваться под собой, получить доступ
