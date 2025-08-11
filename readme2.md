@@ -19,6 +19,12 @@
     source venv/bin/activate
 
 Git:
-1. git clone https://github.com/belkagoyda/orex-workspace
+1. Пишем в терминале VsCodium:
+git clone https://github.com/belkagoyda/orex-workspace
+git config -- global user.name "belkagoyda"
+git config -- global user.email "demozorr@yandex.ru"
+git config -- global --list
+
 2. Слева выбрать Source Control, нажать Commit + Push
+
 3. Перейти на гитхаб, авторизоваться под собой, получить доступ
