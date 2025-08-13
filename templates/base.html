@@ -1,11 +1,44 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>OREX Workspace</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .table-btn { 
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            background: #ff9e00;
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+        }
+        .header { display: flex; justify-content: space-between; align-items: center; }
+        .print-btn { 
+            padding: 10px 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
-    <h1> Выбор таблицы из базы данных </h1>
+    <div class="container">
+        <h1>Выберите таблицу</h1>
+        {% for table in tables %}
+            <a href="{{ url_for('show_table') }}?name={{ table }}" class="table-btn">
+                {{ table }}
+            </a>
+        {% endfor %}
+    </div>
 </body>
 </html>

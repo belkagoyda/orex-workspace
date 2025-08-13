@@ -1,11 +1,73 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Таблица: {{ table_name }}</title>
+    <style>
+        @media print {
+            .no-print { display: none; }
+            body { font-family: Arial, sans-serif; font-size: 10pt; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid #ddd; padding: 4px; }
+            th { background-color: #f2f2f2; }
+        }
+        @media screen {
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #ff9e00; color: white; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .actions { margin: 20px 0; }
+            .generate-btn { 
+                background: #2196F3; 
+                color: white; 
+                padding: 6px 10px; 
+                border: none; 
+                cursor: pointer; 
+                border-radius: 3px;
+            }
+        }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .print-btn { 
+            padding: 10px 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
-    <h1> Таблица </h1>
+    <div class="header">
+        <h1>Таблица: {{ table_name }}</h1>
+        <button onclick="window.print()" class="print-btn no-print">Печать</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                {% for column in columns %}
+                    <th>{{ column }}</th>
+                {% endfor %}
+                <th class="no-print">Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                {% for column in columns %}
+                    <td>{{ row[column] }}</td>
+                {% endfor %}
+                <td class="no-print">
+                    <form method="POST" action="{{ url_for('show_table', name=table_name) }}">
+                        <input type="hidden" name="row_id" value="{{ row[primary_key] }}">
+                        <button type="submit" class="generate-btn">Сгенерировать ответ</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </body>
 </html>
