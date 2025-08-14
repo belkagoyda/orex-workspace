@@ -1,44 +1,11 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <meta charset="UTF-8">
-    <title>OREX Workspace</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .table-btn { 
-            display: block;
-            width: 100%;
-            padding: 15px;
-            margin: 10px 0;
-            background: #ff9e00;
-            color: white;
-            text-align: center;
-            text-decoration: none;
-            border-radius: 5px;
-            font-weight: bold;
-            border: none;
-            cursor: pointer;
-        }
-        .header { display: flex; justify-content: space-between; align-items: center; }
-        .print-btn { 
-            padding: 10px 15px;
-            background: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-    </style>
-</head>
+<head><title>OREX - Tables</title></head>
 <body>
-    <div class="container">
-        <h1>Выберите таблицу</h1>
-        {% for table in tables %}
-            <a href="{{ url_for('show_table') }}?name={{ table }}" class="table-btn">
-                {{ table }}
-            </a>
-        {% endfor %}
-    </div>
+    <h1>Список таблиц</h1>
+    {% for table in tables %}
+        <p><a href="{{ url_for('show_table', name=table) }}">{{ table }}</a></p>
+    {% endfor %}
+    <a href="{{ url_for('logout') }}">Выйти</a>
 </body>
 </html>

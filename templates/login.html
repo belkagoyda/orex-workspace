@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head><title>OREX - Login</title></head>
+<body>
+    <h1>Вход в базу данных</h1>
+    {% if error %}<p style="color:red;">{{ error }}</p>{% endif %}
+    <form method="POST">
+        <input type="text" name="host" placeholder="Сервер (localhost)" value="localhost"><br>
+        <input type="text" name="username" placeholder="Пользователь" required><br>
+        <input type="password" name="password" placeholder="Пароль"><br>
+        <input type="text" name="database" placeholder="База данных" required><br>
+        <button type="submit">Войти</button>
+    </form>
+</body>
+</html>
