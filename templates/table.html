@@ -1,23 +1,60 @@
 <!DOCTYPE html>
 <html>
-<head><title>OREX - {{ table_name }}</title>
-<style>table, th, td {border: 1px solid black; padding: 5px;}</style>
+<head>
+    <title>OREX - {{ table_name }}</title>
+    <style>
+        table, th, td {
+            border: 1px solid black;
+            padding: 5px;
+        }
+        table {
+            table-layout: fixed; /* Фиксированная ширина колонок */
+            width: 100%;         /* На всю ширину экрана */
+            border-collapse: collapse;
+        }
+        th, td {
+            white-space: nowrap;  /* Запрет переноса текста */
+            overflow: hidden;     /* Скрытие выходящего текста */
+            text-overflow: ellipsis; /* Многоточие при обрезке */
+            position: relative;   /* Для позиционирования ресайзера */
+        }
+        th {
+            cursor: col-resize;  /* Курсор-индикатор изменения */
+            background-color: #f0f0f0; /* Легкий фон для заголовков */
+        }
+        .resizer {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 8px;          /* Ширина области захвата */
+            height: 100%;
+            cursor: col-resize;   /* Курсор изменения размера */
+        }
+        @media print {
+            .resizer {
+                display: none;   /* Скрыть ресайзеры при печати */
+            }
+        }
+    </style>
 </head>
 <body>
     <h1>Таблица: {{ table_name }}</h1>
     <button onclick="window.print()">Печать</button>
     
-    <table>
+    <table id="resizableTable">
         <tr>
             {% for column in columns %}
-                <th>{{ column }}</th>
+                <th data-column="{{ column }}">
+                    {{ column }}
+                    <div class="resizer"></div> <!-- Элемент для изменения ширины -->
+                </th>
             {% endfor %}
             <th>Действие</th>
         </tr>
         {% for row in rows %}
         <tr>
             {% for column in columns %}
-                <td>{{ row[column] }}</td>
+                <td title="{{ row[column] }}">{{ row[column] }}</td> <!-- Добавлен тултип -->
             {% endfor %}
             <td>
                 <form method="POST">
@@ -29,5 +66,44 @@
         {% endfor %}
     </table>
     <a href="{{ url_for('base') }}">Назад</a>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const table = document.getElementById('resizableTable');
+            const cols = table.querySelectorAll('th');
+            let startX, startWidth;
+            
+            cols.forEach(col => {
+                const resizer = col.querySelector('.resizer');
+                if (!resizer) return;
+                
+                resizer.addEventListener('mousedown', (e) => {
+                    startX = e.clientX;
+                    startWidth = col.offsetWidth;
+                    
+                    document.addEventListener('mousemove', doResize);
+                    document.addEventListener('mouseup', stopResize);
+                    
+                    e.preventDefault(); // Предотвращаем выделение текста
+                });
+            });
+
+            function doResize(e) {
+                const newWidth = startWidth + (e.clientX - startX);
+                if (newWidth > 20) { // Минимальная ширина колонки
+                    cols.forEach(col => {
+                        if (col.contains(document.elementFromPoint(e.clientX, 10))) {
+                            col.style.width = `${newWidth}px`;
+                        }
+                    });
+                }
+            }
+
+            function stopResize() {
+                document.removeEventListener('mousemove', doResize);
+                document.removeEventListener('mouseup', stopResize);
+            }
+        });
+    </script>
 </body>
 </html>
