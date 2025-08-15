@@ -8,32 +8,29 @@
             padding: 5px;
         }
         table {
-            table-layout: fixed; /* Фиксированная ширина колонок */
-            width: 100%;         /* На всю ширину экрана */
+            table-layout: fixed;
+            width: 100%;
             border-collapse: collapse;
         }
         th, td {
-            white-space: nowrap;  /* Запрет переноса текста */
-            overflow: hidden;     /* Скрытие выходящего текста */
-            text-overflow: ellipsis; /* Многоточие при обрезке */
-            position: relative;   /* Для позиционирования ресайзера */
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         th {
-            cursor: col-resize;  /* Курсор-индикатор изменения */
-            background-color: #f0f0f0; /* Легкий фон для заголовков */
+            position: relative;
+            cursor: col-resize;
+            background-color: #f0f0f0;
         }
-        .resizer {
+        th::after {
+            content: '';
             position: absolute;
             top: 0;
             right: 0;
-            width: 8px;          /* Ширина области захвата */
+            width: 8px;
             height: 100%;
-            cursor: col-resize;   /* Курсор изменения размера */
-        }
-        @media print {
-            .resizer {
-                display: none;   /* Скрыть ресайзеры при печати */
-            }
+            background: rgba(0,0,0,0.1);
+            cursor: col-resize;
         }
     </style>
 </head>
@@ -41,65 +38,71 @@
     <h1>Таблица: {{ table_name }}</h1>
     <button onclick="window.print()">Печать</button>
     
-    <table id="resizableTable">
-        <tr>
-            {% for column in columns %}
-                <th data-column="{{ column }}">
-                    {{ column }}
-                    <div class="resizer"></div> <!-- Элемент для изменения ширины -->
-                </th>
+    <table id="resizeTable">
+        <thead>
+            <tr>
+                {% for column in columns %}
+                    <th>{{ column }}</th>
+                {% endfor %}
+                <th>Действие</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                {% for column in columns %}
+                    <td title="{{ row[column] }}">{{ row[column] }}</td>
+                {% endfor %}
+                <td>
+                    <form method="POST">
+                        <input type="hidden" name="row_id" value="{{ row[primary_key] }}">
+                        <button type="submit">Сгенерировать ответ</button>
+                    </form>
+                </td>
+            </tr>
             {% endfor %}
-            <th>Действие</th>
-        </tr>
-        {% for row in rows %}
-        <tr>
-            {% for column in columns %}
-                <td title="{{ row[column] }}">{{ row[column] }}</td> <!-- Добавлен тултип -->
-            {% endfor %}
-            <td>
-                <form method="POST">
-                    <input type="hidden" name="row_id" value="{{ row[primary_key] }}">
-                    <button type="submit">Сгенерировать ответ</button>
-                </form>
-            </td>
-        </tr>
-        {% endfor %}
+        </tbody>
     </table>
     <a href="{{ url_for('base') }}">Назад</a>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const table = document.getElementById('resizableTable');
-            const cols = table.querySelectorAll('th');
+            const table = document.getElementById('resizeTable');
+            const thElements = table.querySelectorAll('thead th');
             let startX, startWidth;
             
-            cols.forEach(col => {
-                const resizer = col.querySelector('.resizer');
-                if (!resizer) return;
-                
-                resizer.addEventListener('mousedown', (e) => {
-                    startX = e.clientX;
-                    startWidth = col.offsetWidth;
-                    
-                    document.addEventListener('mousemove', doResize);
-                    document.addEventListener('mouseup', stopResize);
-                    
-                    e.preventDefault(); // Предотвращаем выделение текста
+            // Установка начальных размеров колонок
+            thElements.forEach(th => {
+                th.style.width = (100 / thElements.length) + '%';
+            });
+            
+            // Обработчики изменения размера
+            thElements.forEach(th => {
+                th.addEventListener('mousedown', e => {
+                    if (e.offsetX > th.offsetWidth - 15) {
+                        startX = e.clientX;
+                        startWidth = th.offsetWidth;
+                        document.documentElement.style.cursor = 'col-resize';
+                        document.documentElement.style.userSelect = 'none';
+                        
+                        document.addEventListener('mousemove', doResize);
+                        document.addEventListener('mouseup', stopResize);
+                    }
                 });
             });
-
+            
             function doResize(e) {
                 const newWidth = startWidth + (e.clientX - startX);
-                if (newWidth > 20) { // Минимальная ширина колонки
-                    cols.forEach(col => {
-                        if (col.contains(document.elementFromPoint(e.clientX, 10))) {
-                            col.style.width = `${newWidth}px`;
-                        }
-                    });
-                }
+                thElements.forEach(th => {
+                    if (th.contains(document.elementFromPoint(e.clientX, 10))) {
+                        th.style.width = Math.max(30, newWidth) + 'px';
+                    }
+                });
             }
-
+            
             function stopResize() {
+                document.documentElement.style.cursor = '';
+                document.documentElement.style.userSelect = '';
                 document.removeEventListener('mousemove', doResize);
                 document.removeEventListener('mouseup', stopResize);
             }
