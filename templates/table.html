@@ -2,111 +2,125 @@
 <html>
 <head>
     <title>OREX - {{ table_name }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        table, th, td {
-            border: 1px solid black;
-            padding: 5px;
+        * {
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        body {
+            padding: 10px;
+            background: #f5f5f5;
+        }
+        .print-area {
+            background: white;
+            padding: 15px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.1);
+        }
+        @media print {
+            body {
+                padding: 0;
+                background: none;
+            }
+            .print-area {
+                box-shadow: none;
+                padding: 0;
+            }
         }
         table {
-            table-layout: fixed;
             width: 100%;
             border-collapse: collapse;
+            table-layout: fixed;
         }
         th, td {
+            border: 1px solid #ccc;
+            padding: 6px;
+            text-align: left;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
         th {
-            position: relative;
-            cursor: col-resize;
-            background-color: #f0f0f0;
+            background: #e0e0e0;
+            font-weight: bold;
         }
-        th::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 8px;
-            height: 100%;
-            background: rgba(0,0,0,0.1);
-            cursor: col-resize;
+        /* Автоматические ширины колонок по типу данных */
+        th:nth-child(1), 
+        td:nth-child(1) { width: 7%; }   /* ID */
+        th:nth-child(2), 
+        td:nth-child(2) { width: 10%; }  /* Номер */
+        th:nth-child(3), 
+        td:nth-child(3) { width: 12%; }  /* Дата */
+        th:nth-child(4), 
+        td:nth-child(4) { width: 20%; }  /* Адресат */
+        th:nth-child(5), 
+        td:nth-child(5) { width: 25%; }  /* Содержание */
+        th:nth-child(6), 
+        td:nth-child(6) { width: 16%; }  /* Доп. поле */
+        th:last-child, 
+        td:last-child { width: 10%; }    /* Действия */
+        
+        .action-cell {
+            white-space: normal !important;
+        }
+        .controls {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 6px 12px;
+            background: #4a6fa5;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        button:hover {
+            background: #3a5a8a;
+        }
+        a.back-link {
+            display: inline-block;
+            margin-top: 15px;
+            color: #4a6fa5;
+            text-decoration: none;
+        }
+        a.back-link:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
 <body>
-    <h1>Таблица: {{ table_name }}</h1>
-    <button onclick="window.print()">Печать</button>
-    
-    <table id="resizeTable">
-        <thead>
+    <div class="print-area">
+        <div class="controls">
+            <h1 style="flex-grow:1;margin:0">Таблица: {{ table_name }}</h1>
+            <button onclick="window.print()">Печать</button>
+        </div>
+        
+        <table>
             <tr>
                 {% for column in columns %}
                     <th>{{ column }}</th>
                 {% endfor %}
                 <th>Действие</th>
             </tr>
-        </thead>
-        <tbody>
             {% for row in rows %}
             <tr>
                 {% for column in columns %}
                     <td title="{{ row[column] }}">{{ row[column] }}</td>
                 {% endfor %}
-                <td>
+                <td class="action-cell">
                     <form method="POST">
                         <input type="hidden" name="row_id" value="{{ row[primary_key] }}">
-                        <button type="submit">Сгенерировать ответ</button>
+                        <button type="submit" style="width:100%">Ответ</button>
                     </form>
                 </td>
             </tr>
             {% endfor %}
-        </tbody>
-    </table>
-    <a href="{{ url_for('base') }}">Назад</a>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const table = document.getElementById('resizeTable');
-            const thElements = table.querySelectorAll('thead th');
-            let startX, startWidth;
-            
-            // Установка начальных размеров колонок
-            thElements.forEach(th => {
-                th.style.width = (100 / thElements.length) + '%';
-            });
-            
-            // Обработчики изменения размера
-            thElements.forEach(th => {
-                th.addEventListener('mousedown', e => {
-                    if (e.offsetX > th.offsetWidth - 15) {
-                        startX = e.clientX;
-                        startWidth = th.offsetWidth;
-                        document.documentElement.style.cursor = 'col-resize';
-                        document.documentElement.style.userSelect = 'none';
-                        
-                        document.addEventListener('mousemove', doResize);
-                        document.addEventListener('mouseup', stopResize);
-                    }
-                });
-            });
-            
-            function doResize(e) {
-                const newWidth = startWidth + (e.clientX - startX);
-                thElements.forEach(th => {
-                    if (th.contains(document.elementFromPoint(e.clientX, 10))) {
-                        th.style.width = Math.max(30, newWidth) + 'px';
-                    }
-                });
-            }
-            
-            function stopResize() {
-                document.documentElement.style.cursor = '';
-                document.documentElement.style.userSelect = '';
-                document.removeEventListener('mousemove', doResize);
-                document.removeEventListener('mouseup', stopResize);
-            }
-        });
-    </script>
+        </table>
+        
+        <a href="{{ url_for('base') }}" class="back-link">← Назад к списку таблиц</a>
+    </div>
 </body>
 </html>
