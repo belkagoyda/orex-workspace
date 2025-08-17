@@ -91,7 +91,7 @@ def get_template_list():
         logger.error(f"Error listing templates: {str(e)}")
         return []
 
-# Функция для обработки шаблона
+# Функция для обработки шаблона (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 def process_odt_template(template_path, data):
     """Обрабатывает ODT шаблон, подставляя данные"""
     # Создаем временную папку для работы
@@ -110,27 +110,30 @@ def process_odt_template(template_path, data):
         tree = ET.parse(content_path)
         root = tree.getroot()
         
-        # Находим все текстовые элементы
-        namespaces = {
-            'text': 'urn:oasis:names:tc:opendocument:xmlns:text:1.0',
-            'office': 'urn:oasis:names:tc:opendocument:xmlns:office:1.0'
-        }
+        # Создаем словарь замен
+        replacements = {f'${key}': str(value) for key, value in data.items()}
         
-        # Ищем и заменяем плейсхолдеры во всем документе
-        for elem in root.iter():
+        # Функция для рекурсивной замены в элементах
+        def replace_in_element(elem, reps):
+            # Обрабатываем текст элемента
             if elem.text:
-                # Заменяем только те плейсхолдеры, для которых есть данные
-                for key, value in data.items():
-                    placeholder = f'${key}'
-                    if placeholder in elem.text:
-                        logger.debug(f"Replacing {placeholder} with {value}")
-                        elem.text = elem.text.replace(placeholder, str(value))
+                for ph, value in reps.items():
+                    if ph in elem.text:
+                        logger.debug(f"Replacing {ph} with {value}")
+                        elem.text = elem.text.replace(ph, value)
             
+            # Обрабатываем tail элемента
             if elem.tail:
-                for key, value in data.items():
-                    placeholder = f'${key}'
-                    if placeholder in elem.tail:
-                        elem.tail = elem.tail.replace(placeholder, str(value))
+                for ph, value in reps.items():
+                    if ph in elem.tail:
+                        elem.tail = elem.tail.replace(ph, value)
+            
+            # Рекурсивно обрабатываем дочерние элементы
+            for child in elem:
+                replace_in_element(child, reps)
+        
+        # Выполняем замену во всем дереве XML
+        replace_in_element(root, replacements)
         
         # Сохраняем изменения
         tree.write(content_path, encoding='utf-8', xml_declaration=True)

@@ -519,3 +519,5 @@ venv/lib/python3.12/site-packages/werkzeug/sansio/__pycache__/utils.cpython-312.
 venv/lib/python3.12/site-packages/werkzeug/wrappers/__pycache__/__init__.cpython-312.pyc
 venv/lib/python3.12/site-packages/werkzeug/wrappers/__pycache__/request.cpython-312.pyc
 venv/lib/python3.12/site-packages/werkzeug/wrappers/__pycache__/response.cpython-312.pyc
+print-templates
+venv
