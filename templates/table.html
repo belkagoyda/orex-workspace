@@ -16,6 +16,7 @@
             background: white;
             padding: 15px;
             box-shadow: 0 0 5px rgba(0,0,0,0.1);
+            overflow-x: auto;
         }
         @media print {
             body {
@@ -25,6 +26,9 @@
             .print-area {
                 box-shadow: none;
                 padding: 0;
+            }
+            .resizer {
+                display: none !important;
             }
         }
         table {
@@ -37,32 +41,56 @@
             padding: 6px;
             text-align: left;
             overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            position: relative;
         }
         th {
             background: #e0e0e0;
             font-weight: bold;
+            user-select: none;
         }
-        /* Автоматические ширины колонок по типу данных */
-        th:nth-child(1), 
-        td:nth-child(1) { width: 7%; }   /* ID */
-        th:nth-child(2), 
-        td:nth-child(2) { width: 10%; }  /* Номер */
-        th:nth-child(3), 
-        td:nth-child(3) { width: 12%; }  /* Дата */
-        th:nth-child(4), 
-        td:nth-child(4) { width: 20%; }  /* Адресат */
-        th:nth-child(5), 
-        td:nth-child(5) { width: 25%; }  /* Содержание */
-        th:nth-child(6), 
-        td:nth-child(6) { width: 16%; }  /* Доп. поле */
-        th:last-child, 
-        td:last-child { width: 10%; }    /* Действия */
-        
+        .resizer {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 5px;
+            height: 100%;
+            background: transparent;
+            cursor: col-resize;
+            z-index: 10;
+        }
+        .resizer:hover, .resizer.active {
+            background: #4a6fa5;
+        }
         .action-cell {
             white-space: normal !important;
         }
+        
+        /* Универсальное решение для высоты строк */
+        td {
+            vertical-align: top;
+            height: auto !important;
+            min-height: 3.6em;
+            word-break: break-word;
+            white-space: normal;
+        }
+        
+        /* Ограничение по высоте с возможностью прокрутки */
+        td div.cell-content {
+            max-height: 3.6em;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 3;
+        }
+        
+        @media print {
+            td div.cell-content {
+                max-height: none;
+                overflow: visible;
+                display: block;
+            }
+        }
+        
         .controls {
             margin-bottom: 15px;
             display: flex;
@@ -89,6 +117,19 @@
         a.back-link:hover {
             text-decoration: underline;
         }
+        .reset-widths {
+            background: #a54a4a;
+        }
+        .reset-widths:hover {
+            background: #8a3a3a;
+        }
+        /* Стиль для новой кнопки */
+        .add-record {
+            background: #4a8f5a;
+        }
+        .add-record:hover {
+            background: #3a7f4a;
+        }
     </style>
 </head>
 <body>
@@ -96,31 +137,152 @@
         <div class="controls">
             <h1 style="flex-grow:1;margin:0">Таблица: {{ table_name }}</h1>
             <button onclick="window.print()">Печать</button>
+            <button class="reset-widths" onclick="resetColumnWidths()">Сбросить ширины</button>
+            <!-- Исправленная кнопка для добавления записи -->
+            <button class="add-record" onclick="window.location.href='{{ url_for('vvod') }}?table={{ table_name }}'">
+                Добавить запись
+            </button>
         </div>
         
-        <table>
-            <tr>
-                {% for column in columns %}
-                    <th>{{ column }}</th>
+        <table id="resizable-table">
+            <thead>
+                <tr>
+                    {% for column in columns %}
+                        <th data-column="{{ column }}">
+                            {{ column }}
+                            <div class="resizer" data-column="{{ column }}"></div>
+                        </th>
+                    {% endfor %}
+                    <th>Действие</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    {% for column in columns %}
+                        <td title="{{ row[column] }}">
+                            <div class="cell-content">{{ row[column] }}</div>
+                        </td>
+                    {% endfor %}
+                    <td class="action-cell">
+                        <form method="POST">
+                            <input type="hidden" name="row_id" value="{{ row[primary_key] }}">
+                            <button type="submit" style="width:100%">Ответ</button>
+                        </form>
+                    </td>
+                </tr>
                 {% endfor %}
-                <th>Действие</th>
-            </tr>
-            {% for row in rows %}
-            <tr>
-                {% for column in columns %}
-                    <td title="{{ row[column] }}">{{ row[column] }}</td>
-                {% endfor %}
-                <td class="action-cell">
-                    <form method="POST">
-                        <input type="hidden" name="row_id" value="{{ row[primary_key] }}">
-                        <button type="submit" style="width:100%">Ответ</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
+            </tbody>
         </table>
         
         <a href="{{ url_for('base') }}" class="back-link">← Назад к списку таблиц</a>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Восстановление сохраненных ширин
+            loadColumnWidths();
+            
+            // Инициализация ресайзеров
+            initResizers();
+        });
+
+        function initResizers() {
+            const resizers = document.querySelectorAll('.resizer');
+            let activeResizer = null;
+            let startX = 0;
+            let startWidth = 0;
+            let currentColumn = null;
+            let nextColumn = null;
+
+            resizers.forEach(resizer => {
+                resizer.addEventListener('mousedown', function(e) {
+                    e.preventDefault();
+                    activeResizer = this;
+                    startX = e.clientX;
+                    currentColumn = this.parentElement;
+                    startWidth = currentColumn.offsetWidth;
+                    
+                    // Находим следующую колонку
+                    const columns = Array.from(document.querySelectorAll('th'));
+                    const currentIndex = columns.indexOf(currentColumn);
+                    if (currentIndex < columns.length - 2) {
+                        nextColumn = columns[currentIndex + 1];
+                    }
+                    
+                    activeResizer.classList.add('active');
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
+                });
+            });
+
+            function handleMouseMove(e) {
+                if (!activeResizer) return;
+                
+                const diffX = e.clientX - startX;
+                const newWidth = startWidth + diffX;
+                
+                // Минимальная ширина колонки
+                if (newWidth >= 50) {
+                    currentColumn.style.width = `${newWidth}px`;
+                    
+                    // Корректируем следующую колонку
+                    if (nextColumn) {
+                        const nextWidth = nextColumn.offsetWidth - diffX;
+                        if (nextWidth >= 50) {
+                            nextColumn.style.width = `${nextWidth}px`;
+                        }
+                    }
+                }
+            }
+
+            function handleMouseUp() {
+                if (activeResizer) {
+                    activeResizer.classList.remove('active');
+                    saveColumnWidths();
+                    activeResizer = null;
+                    document.removeEventListener('mousemove', handleMouseMove);
+                    document.removeEventListener('mouseup', handleMouseUp);
+                }
+            }
+        }
+
+        function saveColumnWidths() {
+            const columns = document.querySelectorAll('th');
+            const widths = {};
+            
+            columns.forEach(column => {
+                if (column.dataset.column) {
+                    widths[column.dataset.column] = column.style.width || getComputedStyle(column).width;
+                }
+            });
+            
+            localStorage.setItem(`orex_${"{{ table_name }}"}`, JSON.stringify(widths));
+        }
+
+        function loadColumnWidths() {
+            const savedWidths = localStorage.getItem(`orex_${"{{ table_name }}"} `);
+            if (!savedWidths) return;
+            
+            try {
+                const widths = JSON.parse(savedWidths);
+                Object.keys(widths).forEach(columnName => {
+                    const column = document.querySelector(`th[data-column="${columnName}"]`);
+                    if (column) {
+                        column.style.width = widths[columnName];
+                    }
+                });
+            } catch (e) {
+                console.error('Error loading column widths:', e);
+            }
+        }
+
+        function resetColumnWidths() {
+            localStorage.removeItem(`orex_${"{{ table_name }}"} `);
+            document.querySelectorAll('th').forEach(column => {
+                column.style.width = '';
+            });
+        }
+    </script>
 </body>
 </html>
