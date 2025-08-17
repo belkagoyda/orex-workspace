@@ -31,6 +31,9 @@
             .resizer {
                 display: none !important;
             }
+            .upload-section, #template-upload-form, .template-actions {
+                display: none !important;
+            }
         }
         table {
             width: 100%;
@@ -97,6 +100,7 @@
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
+            align-items: center;
         }
         button {
             padding: 6px 12px;
@@ -131,18 +135,164 @@
         .add-record:hover {
             background: #3a7f4a;
         }
+        .template-select {
+            padding: 5px;
+            min-width: 150px;
+        }
+        
+        /* Стили для загрузки шаблонов */
+        .upload-section {
+            margin: 15px 0;
+            padding: 15px;
+            border: 1px dashed #ccc;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        .upload-area {
+            border: 2px dashed #4a6fa5;
+            border-radius: 5px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #fff;
+        }
+        .upload-area:hover, .upload-area.drag-over {
+            background: #e9f0ff;
+            border-color: #3a5a8a;
+        }
+        .upload-icon {
+            font-size: 40px;
+            color: #4a6fa5;
+            margin-bottom: 10px;
+        }
+        .template-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .upload-btn {
+            background: #4a8f5a;
+        }
+        .upload-btn:hover {
+            background: #3a7f4a;
+        }
+        .cancel-btn {
+            background: #a54a4a;
+        }
+        .cancel-btn:hover {
+            background: #8a3a3a;
+        }
+        .template-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .template-item {
+            background: #e0e0e0;
+            padding: 5px 10px;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .delete-template {
+            color: #a54a4a;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .delete-template:hover {
+            color: #8a3a3a;
+        }
+        .flash-messages {
+            margin-bottom: 15px;
+        }
+        .flash {
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 3px;
+        }
+        .flash.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .flash.danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
     </style>
 </head>
 <body>
     <div class="print-area">
+        <!-- Флеш-сообщения -->
+        <div class="flash-messages">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+        
         <div class="controls">
             <h1 style="flex-grow:1;margin:0">Таблица: {{ table_name }}</h1>
+            
+            <!-- Выбор шаблона -->
+            {% if templates %}
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <label for="template-select">Шаблон:</label>
+                    <select id="template-select" class="template-select">
+                        {% for template in templates %}
+                            <option value="{{ template }}">{{ template }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            {% endif %}
+            
             <button onclick="window.print()">Печать</button>
             <button class="reset-widths" onclick="resetColumnWidths()">Сбросить ширины</button>
             <!-- Исправленная кнопка для добавления записи -->
             <button class="add-record" onclick="window.location.href='{{ url_for('vvod') }}?table={{ table_name }}'" id="add-record-btn">
                 Добавить запись
             </button>
+        </div>
+        
+        <!-- Секция загрузки шаблонов -->
+        <div class="upload-section">
+            <h3>Управление шаблонами</h3>
+            
+            <form id="template-upload-form" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="table_name" value="{{ table_name }}">
+                
+                <div class="upload-area" id="drop-area" onclick="document.getElementById('template-file').click()">
+                    <div class="upload-icon">📤</div>
+                    <h3>Перетащите сюда файл шаблона (.odt)</h3>
+                    <p>или нажмите для выбора файла</p>
+                    <input type="file" id="template-file" name="template_file" accept=".odt" style="display: none;" onchange="handleFileSelect(this.files)">
+                </div>
+                
+                <div class="template-actions" id="template-actions" style="display: none;">
+                    <button type="submit" class="upload-btn" name="upload_action">Загрузить шаблон</button>
+                    <button type="button" class="cancel-btn" onclick="cancelUpload()">Отмена</button>
+                </div>
+            </form>
+            
+            {% if templates %}
+                <div class="template-list">
+                    {% for template in templates %}
+                        <div class="template-item">
+                            <span>{{ template }}</span>
+                            <span class="delete-template" onclick="deleteTemplate('{{ template }}')">✕</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p>Нет загруженных шаблонов</p>
+            {% endif %}
         </div>
         
         <table id="resizable-table">
@@ -168,6 +318,9 @@
                     <td class="action-cell">
                         <form method="POST">
                             <input type="hidden" name="row_id" value="{{ row[primary_key] }}">
+                            {% if templates %}
+                                <input type="hidden" name="template" class="template-input" value="{{ templates[0] }}">
+                            {% endif %}
                             <button type="submit" style="width:100%">Ответ</button>
                         </form>
                     </td>
@@ -195,7 +348,129 @@
                     document.getElementById('add-record-btn').click();
                 }
             });
+            
+            // Обновление выбранного шаблона для всех форм
+            const templateSelect = document.getElementById('template-select');
+            if (templateSelect) {
+                templateSelect.addEventListener('change', function() {
+                    const selectedTemplate = this.value;
+                    const inputs = document.querySelectorAll('.template-input');
+                    inputs.forEach(input => {
+                        input.value = selectedTemplate;
+                    });
+                });
+            }
+            
+            // Настройка drag and drop
+            const dropArea = document.getElementById('drop-area');
+            
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropArea.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, unhighlight, false);
+            });
+            
+            function highlight() {
+                dropArea.classList.add('drag-over');
+            }
+            
+            function unhighlight() {
+                dropArea.classList.remove('drag-over');
+            }
+            
+            // Обработка сброса файлов
+            dropArea.addEventListener('drop', handleDrop, false);
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                handleFileSelect(files);
+            }
         });
+
+        function handleFileSelect(files) {
+            if (files.length > 0) {
+                const file = files[0];
+                const fileName = file.name;
+                
+                // Проверяем расширение
+                if (!fileName.toLowerCase().endsWith('.odt')) {
+                    alert('Пожалуйста, выберите файл с расширением .odt');
+                    return;
+                }
+                
+                // Обновляем текст в области загрузки
+                const dropArea = document.getElementById('drop-area');
+                dropArea.innerHTML = `
+                    <div class="upload-icon">📄</div>
+                    <h3>Выбран файл: ${fileName}</h3>
+                    <p>Нажмите "Загрузить шаблон" для подтверждения</p>
+                `;
+                
+                // Показываем кнопки действий
+                document.getElementById('template-actions').style.display = 'flex';
+                
+                // Добавляем файл в форму
+                const fileInput = document.getElementById('template-file');
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                fileInput.files = dataTransfer.files;
+            }
+        }
+        
+        function cancelUpload() {
+            // Восстанавливаем исходное состояние
+            const dropArea = document.getElementById('drop-area');
+            dropArea.innerHTML = `
+                <div class="upload-icon">📤</div>
+                <h3>Перетащите сюда файл шаблона (.odt)</h3>
+                <p>или нажмите для выбора файла</p>
+            `;
+            
+            // Скрываем кнопки действий
+            document.getElementById('template-actions').style.display = 'none';
+            
+            // Сбрасываем input файла
+            document.getElementById('template-file').value = '';
+        }
+        
+        function deleteTemplate(templateName) {
+            if (confirm(`Вы уверены, что хотите удалить шаблон "${templateName}"?`)) {
+                // Отправляем запрос на удаление
+                fetch('/orex-ws/delete_template', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        template_name: templateName
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        location.reload();
+                    } else {
+                        alert('Ошибка: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('Ошибка сети: ' + error);
+                });
+            }
+        }
 
         function initResizers() {
             const resizers = document.querySelectorAll('.resizer');

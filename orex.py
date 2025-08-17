@@ -1,55 +1,156 @@
-from flask import Flask, render_template, request, redirect, url_for, session, send_file, flash
-from sqlalchemy import create_engine, inspect, text, MetaData, Table, insert
-from sqlalchemy.exc import SQLAlchemyError
+from flask import Flask, render_template, request, redirect, url_for, session, send_file, flash, jsonify
+from sqlalchemy import create_engine, inspect, text
 import os
 import io
 from datetime import datetime
+import tempfile
+import shutil
+import zipfile
+import xml.etree.ElementTree as ET
+import uuid
+from werkzeug.utils import secure_filename
+import logging
+
+# Настройка логгирования
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Создаем экземпляр Flask приложения
 orex = Flask(__name__)
 orex.secret_key = os.urandom(24).hex()  # Автогенерация ключа
+orex.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 
 # Глобальный движок для упрощения
 engine = None
 
+# Константы
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PRINT_TEMPLATES_DIR = os.path.join(BASE_DIR, 'print-templates')
+ALLOWED_EXTENSIONS = {'odt'}
+
+# Создаем папку для шаблонов, если ее нет
+if not os.path.exists(PRINT_TEMPLATES_DIR):
+    os.makedirs(PRINT_TEMPLATES_DIR)
+    logger.info(f"Created templates directory: {PRINT_TEMPLATES_DIR}")
+
+# Функция для проверки расширения файла
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 # Функция для получения метаданных таблицы
 def get_table_metadata(table_name):
     """Получаем детальную информацию о колонках таблицы"""
-    inspector = inspect(engine)
-    columns = []
+    try:
+        inspector = inspect(engine)
+        columns = []
+        
+        for col in inspector.get_columns(table_name):
+            # Определяем тип данных
+            col_type = str(col['type'])
+            if 'INT' in col_type:
+                data_type = 'INTEGER'
+            elif 'VARCHAR' in col_type or 'TEXT' in col_type:
+                data_type = 'TEXT'
+            elif 'DATE' in col_type:
+                data_type = 'DATE'
+            elif 'DATETIME' in col_type or 'TIMESTAMP' in col_type:
+                data_type = 'DATETIME'
+            elif 'BOOLEAN' in col_type:
+                data_type = 'BOOLEAN'
+            else:
+                data_type = col_type
+            
+            # Форматируем значение по умолчанию
+            default_value = col.get('default')
+            if isinstance(default_value, str) and default_value.startswith("'") and default_value.endswith("'"):
+                default_value = default_value[1:-1]
+            
+            column_info = {
+                'name': col['name'],
+                'type': data_type,
+                'nullable': col['nullable'],
+                'default': default_value,
+                'autoincrement': col.get('autoincrement', False),
+                'primary_key': col.get('primary_key', False)
+            }
+            columns.append(column_info)
+        
+        return columns
     
-    for col in inspector.get_columns(table_name):
-        # Определяем тип данных
-        col_type = str(col['type'])
-        if 'INT' in col_type:
-            data_type = 'INTEGER'
-        elif 'VARCHAR' in col_type or 'TEXT' in col_type:
-            data_type = 'TEXT'
-        elif 'DATE' in col_type:
-            data_type = 'DATE'
-        elif 'DATETIME' in col_type or 'TIMESTAMP' in col_type:
-            data_type = 'DATETIME'
-        elif 'BOOLEAN' in col_type:
-            data_type = 'BOOLEAN'
-        else:
-            data_type = col_type
+    except Exception as e:
+        logger.error(f"Error getting metadata for {table_name}: {str(e)}")
+        raise
+
+# Функция для получения списка шаблонов
+def get_template_list():
+    """Возвращает список доступных шаблонов"""
+    try:
+        return [f for f in os.listdir(PRINT_TEMPLATES_DIR) if f.endswith('.odt')]
+    except Exception as e:
+        logger.error(f"Error listing templates: {str(e)}")
+        return []
+
+# Функция для обработки шаблона
+def process_odt_template(template_path, data):
+    """Обрабатывает ODT шаблон, подставляя данные"""
+    # Создаем временную папку для работы
+    temp_dir = tempfile.mkdtemp()
+    logger.debug(f"Created temp directory: {temp_dir}")
+    
+    try:
+        # Распаковываем ODT файл (это ZIP архив)
+        with zipfile.ZipFile(template_path, 'r') as zip_ref:
+            zip_ref.extractall(temp_dir)
         
-        # Форматируем значение по умолчанию
-        default_value = col.get('default')
-        if isinstance(default_value, str) and default_value.startswith("'") and default_value.endswith("'"):
-            default_value = default_value[1:-1]
+        # Основной контент находится в content.xml
+        content_path = os.path.join(temp_dir, 'content.xml')
         
-        column_info = {
-            'name': col['name'],
-            'type': data_type,
-            'nullable': col['nullable'],
-            'default': default_value,
-            'autoincrement': col.get('autoincrement', False),
-            'primary_key': col.get('primary_key', False)
+        # Читаем и парсим XML
+        tree = ET.parse(content_path)
+        root = tree.getroot()
+        
+        # Находим все текстовые элементы
+        namespaces = {
+            'text': 'urn:oasis:names:tc:opendocument:xmlns:text:1.0',
+            'office': 'urn:oasis:names:tc:opendocument:xmlns:office:1.0'
         }
-        columns.append(column_info)
+        
+        # Ищем и заменяем плейсхолдеры во всем документе
+        for elem in root.iter():
+            if elem.text:
+                # Заменяем только те плейсхолдеры, для которых есть данные
+                for key, value in data.items():
+                    placeholder = f'${key}'
+                    if placeholder in elem.text:
+                        logger.debug(f"Replacing {placeholder} with {value}")
+                        elem.text = elem.text.replace(placeholder, str(value))
+            
+            if elem.tail:
+                for key, value in data.items():
+                    placeholder = f'${key}'
+                    if placeholder in elem.tail:
+                        elem.tail = elem.tail.replace(placeholder, str(value))
+        
+        # Сохраняем изменения
+        tree.write(content_path, encoding='utf-8', xml_declaration=True)
+        
+        # Собираем обратно в ODT
+        processed_path = os.path.join(temp_dir, 'processed.odt')
+        with zipfile.ZipFile(processed_path, 'w') as zip_ref:
+            for folder, _, files in os.walk(temp_dir):
+                for file in files:
+                    if file != 'processed.odt':  # Не включаем сам файл архива
+                        file_path = os.path.join(folder, file)
+                        arc_path = os.path.relpath(file_path, temp_dir)
+                        zip_ref.write(file_path, arc_path)
+        
+        return processed_path, temp_dir
     
-    return columns
+    except Exception as e:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        logger.error(f"Template processing error: {str(e)}")
+        raise RuntimeError(f"Ошибка обработки шаблона: {str(e)}")
 
 @orex.route('/orex-ws/login', methods=['GET', 'POST'])
 def login():
@@ -75,6 +176,7 @@ def login():
             return redirect(url_for('base'))
         
         except Exception as e:
+            logger.error(f"Login error: {str(e)}")
             return render_template('login.html', error=str(e))
     
     return render_template('login.html')
@@ -96,6 +198,7 @@ def base():
         return render_template('base.html', tables=inspector.get_table_names())
     
     except Exception as e:
+        logger.error(f"Base error: {str(e)}")
         return render_template('error.html', error=str(e))
 
 @orex.route('/orex-ws/table', methods=['GET', 'POST'])
@@ -116,29 +219,77 @@ def show_table():
         with engine.connect() as conn:
             rows = [dict(row) for row in conn.execute(text(f"SELECT * FROM `{table_name}`")).mappings()]
         
+        # Получаем список шаблонов
+        templates = get_template_list()
+        
         if request.method == 'POST':
-            # Проверяем, какое действие выполняется
-            if 'row_id' in request.form:
-                # Генерация ответа на письмо
+            # Обработка загрузки шаблона
+            if 'template_file' in request.files:
+                file = request.files['template_file']
+                if file.filename == '':
+                    flash('Не выбран файл для загрузки', 'danger')
+                elif not allowed_file(file.filename):
+                    flash('Разрешены только файлы .odt', 'danger')
+                else:
+                    # Генерируем уникальное имя файла
+                    filename = secure_filename(file.filename)
+                    unique_name = f"{uuid.uuid4().hex[:8]}_{filename}"
+                    save_path = os.path.join(PRINT_TEMPLATES_DIR, unique_name)
+                    
+                    try:
+                        file.save(save_path)
+                        flash(f'Шаблон "{filename}" успешно загружен!', 'success')
+                        logger.info(f"Template uploaded: {save_path}")
+                        # Возвращаемся на ту же страницу
+                        return redirect(url_for('show_table', name=table_name))
+                    except Exception as e:
+                        logger.error(f"Template save error: {str(e)}")
+                        flash(f'Ошибка при сохранении файла: {str(e)}', 'danger')
+            
+            # Генерация ответа на письмо
+            elif 'row_id' in request.form:
                 row_id = request.form['row_id']
+                template_name = request.form.get('template')
                 selected_row = next((row for row in rows if str(row[primary_key]) == row_id), None)
                 
-                if selected_row:
-                    # Фиктивная генерация файла
-                    content = f"Ответ на письмо №{row_id}".encode('utf-8')
-                    return send_file(
-                        io.BytesIO(content),
-                        as_attachment=True,
-                        download_name=f'response_{row_id}.odt'
-                    )
+                if selected_row and template_name:
+                    # Полный путь к шаблону
+                    template_path = os.path.join(PRINT_TEMPLATES_DIR, template_name)
+                    
+                    if not os.path.exists(template_path):
+                        flash(f'Шаблон {template_name} не найден', 'danger')
+                    else:
+                        # Обрабатываем шаблон
+                        try:
+                            logger.debug(f"Processing template: {template_path}")
+                            logger.debug(f"Using data: {selected_row}")
+                            
+                            processed_path, temp_dir = process_odt_template(template_path, selected_row)
+                            
+                            # Отправляем результат
+                            response = send_file(
+                                processed_path,
+                                as_attachment=True,
+                                download_name=f'response_{row_id}.odt',
+                                mimetype='application/vnd.oasis.opendocument.text'
+                            )
+                            
+                            # Удаляем временные файлы после отправки
+                            response.call_on_close(lambda: shutil.rmtree(temp_dir, ignore_errors=True))
+                            return response
+                        except Exception as e:
+                            logger.error(f"Template processing error: {str(e)}")
+                            flash(f'Ошибка обработки шаблона: {str(e)}', 'danger')
         
         return render_template('table.html',
                               table_name=table_name,
                               columns=columns,
                               rows=rows,
-                              primary_key=primary_key)
+                              primary_key=primary_key,
+                              templates=templates)
     
     except Exception as e:
+        logger.error(f"Show table error: {str(e)}")
         return render_template('error.html', error=str(e))
 
 # Обновленный маршрут для формы добавления записи
@@ -152,7 +303,7 @@ def vvod():
         return redirect(url_for('base'))
     
     try:
-        # Получаем детальные метаданные вместо простого списка колонок
+        # Получаем детальные метаданные
         columns_meta = get_table_metadata(table_name)
         
         # Фильтруем только те колонки, которые нужно показать
@@ -164,9 +315,10 @@ def vvod():
                               all_columns=columns_meta)
     
     except Exception as e:
+        logger.error(f"Vvod error: {str(e)}")
         return render_template('error.html', error=str(e))
 
-# Полностью переписанный маршрут для сохранения записи
+# Маршрут для сохранения записи
 @orex.route('/orex-ws/save_record', methods=['POST'])
 def save_record():
     if not session.get('logged_in'):
@@ -191,21 +343,16 @@ def save_record():
                 
             # Обработка разных случаев
             if form_value is None or form_value == '':
-                # Если поле разрешает NULL - ставим NULL
                 if col['nullable']:
                     data[col_name] = None
-                # Если есть значение по умолчанию - пропускаем (БД подставит сама)
                 elif col['default'] is not None:
                     continue
-                # Иначе возвращаем ошибку
                 else:
                     flash(f'Поле "{col_name}" обязательно для заполнения', 'danger')
                     return redirect(url_for('vvod', table=table_name))
             else:
-                # Обработка чекбоксов
                 if col['type'] == 'BOOLEAN' or 'галочка' in col_name.lower():
                     data[col_name] = 1 if form_value == '1' else 0
-                # Обработка даты/времени
                 elif col['type'] == 'DATE' and form_value:
                     data[col_name] = datetime.strptime(form_value, '%Y-%m-%d').date()
                 elif col['type'] == 'DATETIME' and form_value:
@@ -226,8 +373,41 @@ def save_record():
         return redirect(f'/orex-ws/table?name={table_name}')
     
     except Exception as e:
+        logger.error(f"Save record error: {str(e)}")
         flash(f'Ошибка при сохранении: {str(e)}', 'danger')
         return redirect(url_for('vvod', table=table_name))
+
+# Маршрут для удаления шаблонов
+@orex.route('/orex-ws/delete_template', methods=['POST'])
+def delete_template():
+    if not session.get('logged_in'):
+        return jsonify({'success': False, 'message': 'Требуется авторизация'}), 401
+    
+    try:
+        data = request.get_json()
+        template_name = data.get('template_name')
+        
+        if not template_name:
+            return jsonify({'success': False, 'message': 'Не указано имя шаблона'}), 400
+        
+        template_path = os.path.join(PRINT_TEMPLATES_DIR, template_name)
+        
+        if not os.path.exists(template_path):
+            return jsonify({'success': False, 'message': 'Шаблон не найден'}), 404
+        
+        os.remove(template_path)
+        logger.info(f"Template deleted: {template_path}")
+        return jsonify({
+            'success': True,
+            'message': f'Шаблон "{template_name}" успешно удален'
+        })
+    
+    except Exception as e:
+        logger.error(f"Delete template error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Ошибка при удалении шаблона: {str(e)}'
+        }), 500
 
 if __name__ == "__main__":
     orex.run(host='0.0.0.0', port=5000, debug=True)
