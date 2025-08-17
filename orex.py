@@ -1,8 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for, session, send_file
-from sqlalchemy import create_engine, inspect, text
+from flask import Flask, render_template, request, redirect, url_for, session, send_file, flash
+from sqlalchemy import create_engine, inspect, text, MetaData, Table, insert
 from sqlalchemy.exc import SQLAlchemyError
 import os
 import io
+from datetime import datetime
 
 # Создаем экземпляр Flask приложения
 orex = Flask(__name__)
@@ -10,6 +11,45 @@ orex.secret_key = os.urandom(24).hex()  # Автогенерация ключа
 
 # Глобальный движок для упрощения
 engine = None
+
+# Функция для получения метаданных таблицы
+def get_table_metadata(table_name):
+    """Получаем детальную информацию о колонках таблицы"""
+    inspector = inspect(engine)
+    columns = []
+    
+    for col in inspector.get_columns(table_name):
+        # Определяем тип данных
+        col_type = str(col['type'])
+        if 'INT' in col_type:
+            data_type = 'INTEGER'
+        elif 'VARCHAR' in col_type or 'TEXT' in col_type:
+            data_type = 'TEXT'
+        elif 'DATE' in col_type:
+            data_type = 'DATE'
+        elif 'DATETIME' in col_type or 'TIMESTAMP' in col_type:
+            data_type = 'DATETIME'
+        elif 'BOOLEAN' in col_type:
+            data_type = 'BOOLEAN'
+        else:
+            data_type = col_type
+        
+        # Форматируем значение по умолчанию
+        default_value = col.get('default')
+        if isinstance(default_value, str) and default_value.startswith("'") and default_value.endswith("'"):
+            default_value = default_value[1:-1]
+        
+        column_info = {
+            'name': col['name'],
+            'type': data_type,
+            'nullable': col['nullable'],
+            'default': default_value,
+            'autoincrement': col.get('autoincrement', False),
+            'primary_key': col.get('primary_key', False)
+        }
+        columns.append(column_info)
+    
+    return columns
 
 @orex.route('/orex-ws/login', methods=['GET', 'POST'])
 def login():
@@ -101,7 +141,7 @@ def show_table():
     except Exception as e:
         return render_template('error.html', error=str(e))
 
-# Новый маршрут для формы добавления записи
+# Обновленный маршрут для формы добавления записи
 @orex.route('/orex-ws/vvod', methods=['GET'])
 def vvod():
     if not session.get('logged_in'):
@@ -112,49 +152,66 @@ def vvod():
         return redirect(url_for('base'))
     
     try:
-        inspector = inspect(engine)
-        columns = [col['name'] for col in inspector.get_columns(table_name)]
-        primary_keys = inspector.get_pk_constraint(table_name)['constrained_columns']
-        primary_key = primary_keys[0] if primary_keys else columns[0]
+        # Получаем детальные метаданные вместо простого списка колонок
+        columns_meta = get_table_metadata(table_name)
+        
+        # Фильтруем только те колонки, которые нужно показать
+        visible_columns = [col for col in columns_meta if not col['autoincrement']]
         
         return render_template('vvod.html', 
                               table_name=table_name, 
-                              columns=columns,
-                              primary_key=primary_key)
+                              columns=visible_columns,
+                              all_columns=columns_meta)
     
     except Exception as e:
         return render_template('error.html', error=str(e))
 
-# Маршрут для сохранения новой записи
+# Полностью переписанный маршрут для сохранения записи
 @orex.route('/orex-ws/save_record', methods=['POST'])
 def save_record():
     if not session.get('logged_in'):
         return redirect(url_for('login'))
     
+    table_name = request.form.get('table_name')
+    if not table_name:
+        return redirect(url_for('base'))
+    
     try:
-        # Получаем имя таблицы из формы
-        table_name = request.form.get('table_name')
-        if not table_name:
-            return redirect(url_for('base'))
-        
-        inspector = inspect(engine)
-        columns = [col['name'] for col in inspector.get_columns(table_name)]
-        primary_keys = inspector.get_pk_constraint(table_name)['constrained_columns']
-        primary_key = primary_keys[0] if primary_keys else columns[0]
-        
-        # Собираем данные из формы
+        # Получаем полную метаинформацию о таблице
+        columns_meta = get_table_metadata(table_name)
         data = {}
-        for column in columns:
-            # Пропускаем первичный ключ
-            if column == primary_key:
+        
+        for col in columns_meta:
+            col_name = col['name']
+            form_value = request.form.get(col_name)
+            
+            # Для автоинкрементных полей ничего не делаем
+            if col['autoincrement']:
                 continue
                 
-            # Обработка разных типов данных
-            if column.lower().find('галочка') != -1:
-                # Для чекбоксов: если отмечен - 1, иначе - 0
-                data[column] = 1 if request.form.get(column) == '1' else 0
+            # Обработка разных случаев
+            if form_value is None or form_value == '':
+                # Если поле разрешает NULL - ставим NULL
+                if col['nullable']:
+                    data[col_name] = None
+                # Если есть значение по умолчанию - пропускаем (БД подставит сама)
+                elif col['default'] is not None:
+                    continue
+                # Иначе возвращаем ошибку
+                else:
+                    flash(f'Поле "{col_name}" обязательно для заполнения', 'danger')
+                    return redirect(url_for('vvod', table=table_name))
             else:
-                data[column] = request.form.get(column, '')
+                # Обработка чекбоксов
+                if col['type'] == 'BOOLEAN' or 'галочка' in col_name.lower():
+                    data[col_name] = 1 if form_value == '1' else 0
+                # Обработка даты/времени
+                elif col['type'] == 'DATE' and form_value:
+                    data[col_name] = datetime.strptime(form_value, '%Y-%m-%d').date()
+                elif col['type'] == 'DATETIME' and form_value:
+                    data[col_name] = datetime.strptime(form_value, '%Y-%m-%dT%H:%M')
+                else:
+                    data[col_name] = form_value
         
         # Строим запрос на вставку
         columns_str = ', '.join([f'`{col}`' for col in data.keys()])
@@ -165,11 +222,12 @@ def save_record():
             conn.execute(insert_query, data)
             conn.commit()
         
-        # Перенаправляем обратно к таблице
+        flash('Запись успешно добавлена!', 'success')
         return redirect(f'/orex-ws/table?name={table_name}')
     
     except Exception as e:
-        return render_template('error.html', error=str(e))
+        flash(f'Ошибка при сохранении: {str(e)}', 'danger')
+        return redirect(url_for('vvod', table=table_name))
 
 if __name__ == "__main__":
     orex.run(host='0.0.0.0', port=5000, debug=True)

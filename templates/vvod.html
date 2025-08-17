@@ -32,9 +32,20 @@
             margin-bottom: 5px;
             font-weight: bold;
         }
+        .field-info {
+            font-size: 0.85em;
+            color: #666;
+            font-style: italic;
+            margin-top: 3px;
+        }
+        .required::after {
+            content: " *";
+            color: red;
+        }
         input[type="text"],
         input[type="number"],
         input[type="date"],
+        input[type="datetime-local"],
         select,
         textarea {
             width: 100%;
@@ -45,6 +56,8 @@
         }
         input[type="checkbox"] {
             width: auto;
+            transform: scale(1.2);
+            margin-right: 5px;
         }
         button {
             padding: 10px 20px;
@@ -54,6 +67,7 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 16px;
+            margin-right: 10px;
         }
         button:hover {
             background: #3a5a8a;
@@ -73,48 +87,138 @@
         .save-btn:hover {
             background: #3a7f4a;
         }
+        .auto-fill-btn {
+            background: #8f7a4a;
+        }
+        .auto-fill-btn:hover {
+            background: #7f6a3a;
+        }
+        .flash-message {
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+        .flash-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .flash-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
     </style>
 </head>
 <body>
     <div class="form-container">
         <h1>Добавить запись в таблицу: {{ table_name }}</h1>
-        <form method="POST" action="{{ url_for('save_record', table_name=table_name) }}">
-            {% for column in columns %}
-                {% if column != primary_key %}  {# Пропускаем первичный ключ #}
+        
+        {# Вывод сообщений об ошибках/успехе #}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        
+        <form method="POST" action="{{ url_for('save_record') }}">
+            <input type="hidden" name="table_name" value="{{ table_name }}">
+            
+            {% for col in columns %}
                 <div class="form-group">
-                    <label for="{{ column }}">{{ column }}</label>
+                    <label for="{{ col.name }}" class="{% if not col.nullable and not col.default %}required{% endif %}">
+                        {{ col.name }}
+                    </label>
                     
-                    {# Автоматически определяем тип поля #}
-                    {% if column.lower().find('дата') != -1 %}
-                        <input type="date" id="{{ column }}" name="{{ column }}" autofocus>
-                    {% elif column.lower().find('галочка') != -1 %}
-                        <input type="checkbox" id="{{ column }}" name="{{ column }}" value="1">
-                    {% elif column.lower().find('статус') != -1 %}
-                        <select id="{{ column }}" name="{{ column }}">
+                    {# Подсказка о значении по умолчанию #}
+                    {% if col.default %}
+                        <div class="field-info">По умолчанию: {{ col.default }}</div>
+                    {% endif %}
+                    
+                    {# Определение типа поля #}
+                    {% if col.type == 'DATE' or col.name.lower().find('дата') != -1 %}
+                        <input type="date" id="{{ col.name }}" name="{{ col.name }}"
+                               {% if not col.nullable and not col.default %}required{% endif %}>
+                    
+                    {% elif col.type == 'DATETIME' or col.type == 'TIMESTAMP' %}
+                        <input type="datetime-local" id="{{ col.name }}" name="{{ col.name }}"
+                               {% if not col.nullable and not col.default %}required{% endif %}>
+                    
+                    {% elif col.type == 'BOOLEAN' or col.name.lower().find('галочка') != -1 %}
+                        <label>
+                            <input type="hidden" name="{{ col.name }}" value="0">
+                            <input type="checkbox" id="{{ col.name }}" name="{{ col.name }}" value="1">
+                            Отмечено
+                        </label>
+                    
+                    {% elif col.name.lower().find('статус') != -1 %}
+                        <select id="{{ col.name }}" name="{{ col.name }}"
+                                {% if not col.nullable and not col.default %}required{% endif %}>
                             <option value="Сделано">Сделано</option>
                             <option value="Не сделано" selected>Не сделано</option>
                         </select>
-                    {% elif column.lower().find('текст') != -1 or column.lower().find('примечание') != -1 %}
-                        <textarea id="{{ column }}" name="{{ column }}" rows="3"></textarea>
+                    
+                    {% elif col.type in ['TEXT', 'LONGTEXT'] or col.name.lower().find('текст') != -1 or col.name.lower().find('примечание') != -1 %}
+                        <textarea id="{{ col.name }}" name="{{ col.name }}" rows="3"
+                                  {% if not col.nullable and not col.default %}required{% endif %}></textarea>
+                    
                     {% else %}
-                        <input type="text" id="{{ column }}" name="{{ column }}">
+                        {# Поля с префиксом или кодом #}
+                        {% if col.name.lower().find('префикс') != -1 or col.name.lower().find('код') != -1 %}
+                            <input type="text" id="{{ col.name }}" name="{{ col.name }}" 
+                                   value="{{ col.default if col.default else '' }}"
+                                   {% if col.default %}readonly{% endif %}
+                                   {% if not col.nullable and not col.default %}required{% endif %}>
+                        {% else %}
+                            <input type="text" id="{{ col.name }}" name="{{ col.name }}"
+                                   {% if not col.nullable and not col.default %}required{% endif %}>
+                        {% endif %}
                     {% endif %}
                 </div>
-                {% endif %}
             {% endfor %}
             
-            <button type="submit" class="save-btn">Сохранить</button>
+            <div>
+                <button type="button" class="auto-fill-btn" id="auto-fill">Автозаполнение</button>
+                <button type="submit" class="save-btn">Сохранить</button>
+            </div>
         </form>
-        <a href="{{ url_for('show_table', table_name=table_name) }}" class="back-link">← Назад к таблице</a>
+        <a href="{{ url_for('show_table', name=table_name) }}" class="back-link">← Назад к таблице</a>
     </div>
     
     <script>
-        // Автоматически фокусируемся на первом поле
+        // Автоматически фокусируемся на первом доступном поле
         document.addEventListener('DOMContentLoaded', function() {
-            const firstInput = document.querySelector('input, select, textarea');
-            if (firstInput) {
-                firstInput.focus();
-            }
+            const firstInput = document.querySelector('input:not([readonly]):not([type="hidden"]), select, textarea');
+            if (firstInput) firstInput.focus();
+            
+            // Автозаполнение по кнопке
+            document.getElementById('auto-fill').addEventListener('click', function() {
+                // Автозаполнение префикса
+                const prefixFields = document.querySelectorAll('input[name*="префикс"], input[name*="код"]');
+                if (prefixFields.length > 0) {
+                    const timestamp = new Date().getTime().toString().slice(-4);
+                    prefixFields[0].value = `OREX-${timestamp}`;
+                }
+                
+                // Автозаполнение даты
+                const dateFields = document.querySelectorAll('input[type="date"]');
+                if (dateFields.length > 0) {
+                    const today = new Date().toISOString().split('T')[0];
+                    dateFields[0].value = today;
+                }
+                
+                // Автозаполнение времени
+                const datetimeFields = document.querySelectorAll('input[type="datetime-local"]');
+                if (datetimeFields.length > 0) {
+                    const now = new Date();
+                    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                    datetimeFields[0].value = now.toISOString().slice(0, 16);
+                }
+            });
         });
     </script>
 </body>
