@@ -4,7 +4,6 @@
     <title>OREX - {{ table_name }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        /* Все существующие стили остаются без изменений */
         * {
             box-sizing: border-box;
             font-family: Arial, sans-serif;
@@ -28,10 +27,7 @@
                 box-shadow: none;
                 padding: 0;
             }
-            .resizer {
-                display: none !important;
-            }
-            .upload-section, #template-upload-form, .template-actions {
+            .resizer, .no-print, .template-section {
                 display: none !important;
             }
         }
@@ -68,8 +64,6 @@
         .action-cell {
             white-space: normal !important;
         }
-        
-        /* Универсальное решение для высоты строк */
         td {
             vertical-align: top;
             height: auto !important;
@@ -77,8 +71,6 @@
             word-break: break-word;
             white-space: normal;
         }
-        
-        /* Ограничение по высоте с возможностью прокрутки */
         td div.cell-content {
             max-height: 3.6em;
             overflow: hidden;
@@ -86,7 +78,6 @@
             -webkit-box-orient: vertical;
             -webkit-line-clamp: 3;
         }
-        
         @media print {
             td div.cell-content {
                 max-height: none;
@@ -94,7 +85,6 @@
                 display: block;
             }
         }
-        
         .controls {
             margin-bottom: 15px;
             display: flex;
@@ -128,7 +118,6 @@
         .reset-widths:hover {
             background: #8a3a3a;
         }
-        /* Стиль для новой кнопки */
         .add-record {
             background: #4a8f5a;
         }
@@ -139,8 +128,6 @@
             padding: 5px;
             min-width: 150px;
         }
-        
-        /* Стили для загрузки шаблонов */
         .upload-section {
             margin: 15px 0;
             padding: 15px;
@@ -223,11 +210,35 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
+        
+        /* Новые стили */
+        .search-box {
+            padding: 6px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            min-width: 200px;
+        }
+        .no-print {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .template-toggle {
+            background: #6a5acd;
+            color: white;
+        }
+        .template-toggle:hover {
+            background: #5a4abd;
+        }
+        .template-section {
+            margin-top: 15px;
+        }
     </style>
 </head>
 <body>
     <div class="print-area">
-        <!-- Флеш-сообщения -->
         <div class="flash-messages">
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
@@ -240,8 +251,11 @@
         
         <div class="controls">
             <h1 style="flex-grow:1;margin:0">Таблица: {{ table_name }}</h1>
+        </div>
+        
+        <div class="no-print">
+            <input type="text" id="search-input" class="search-box" placeholder="Поиск по таблице..." oninput="filterTable()">
             
-            <!-- Выбор шаблона -->
             {% if templates %}
                 <div style="display: flex; align-items: center; gap: 5px;">
                     <label for="template-select">Шаблон:</label>
@@ -254,15 +268,14 @@
             {% endif %}
             
             <button onclick="window.print()">Печать</button>
-            <button class="reset-widths" onclick="resetColumnWidths()">Сбросить ширины</button>
-            <!-- Исправленная кнопка для добавления записи -->
+            <button class="reset-widths" onclick="resetColumnWidths()">По умолчанию</button>
             <button class="add-record" onclick="window.location.href='{{ url_for('vvod') }}?table={{ table_name }}'" id="add-record-btn">
                 Добавить запись
             </button>
+            <button class="template-toggle" onclick="toggleTemplateSection()">Шаблоны</button>
         </div>
         
-        <!-- Секция загрузки шаблонов -->
-        <div class="upload-section">
+        <div class="template-section no-print" id="template-section" style="display: none;">
             <h3>Управление шаблонами</h3>
             
             <form id="template-upload-form" method="post" enctype="multipart/form-data">
@@ -307,7 +320,7 @@
                     <th>Действие</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="table-body">
                 {% for row in rows %}
                 <tr>
                     {% for column in columns %}
@@ -334,22 +347,20 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Восстановление сохраненных ширин
             loadColumnWidths();
-            
-            // Инициализация ресайзеров
             initResizers();
             
-            // Обработчик горячей клавиши "1"
             document.addEventListener('keydown', function(event) {
-                // Проверяем, что нажата цифра 1 (код 49) и не в поле ввода
                 if (event.key === '1' && event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA') {
                     event.preventDefault();
                     document.getElementById('add-record-btn').click();
                 }
+                if (event.key === '2' && event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA') {
+                    event.preventDefault();
+                    document.getElementById('search-input').focus();
+                }
             });
             
-            // Обновление выбранного шаблона для всех форм
             const templateSelect = document.getElementById('template-select');
             if (templateSelect) {
                 templateSelect.addEventListener('change', function() {
@@ -361,9 +372,7 @@
                 });
             }
             
-            // Настройка drag and drop
             const dropArea = document.getElementById('drop-area');
-            
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
                 dropArea.addEventListener(eventName, preventDefaults, false);
             });
@@ -389,7 +398,6 @@
                 dropArea.classList.remove('drag-over');
             }
             
-            // Обработка сброса файлов
             dropArea.addEventListener('drop', handleDrop, false);
             
             function handleDrop(e) {
@@ -399,18 +407,46 @@
             }
         });
 
+        function filterTable() {
+            const input = document.getElementById('search-input');
+            const filter = input.value.toLowerCase();
+            const table = document.getElementById('table-body');
+            const rows = table.getElementsByTagName('tr');
+            
+            for (let i = 0; i < rows.length; i++) {
+                const cells = rows[i].getElementsByTagName('td');
+                let found = false;
+                
+                for (let j = 0; j < cells.length - 1; j++) {
+                    const cell = cells[j];
+                    if (cell) {
+                        const txtValue = cell.textContent || cell.innerText;
+                        if (txtValue.toLowerCase().includes(filter)) {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                
+                rows[i].style.display = found ? '' : 'none';
+            }
+        }
+        
+        function toggleTemplateSection() {
+            const section = document.getElementById('template-section');
+            section.style.display = section.style.display === 'none' ? 'block' : 'none';
+        }
+
         function handleFileSelect(files) {
             if (files.length > 0) {
                 const file = files[0];
                 const fileName = file.name;
                 
-                // Проверяем расширение
                 if (!fileName.toLowerCase().endsWith('.odt')) {
                     alert('Пожалуйста, выберите файл с расширением .odt');
                     return;
                 }
                 
-                // Обновляем текст в области загрузки
                 const dropArea = document.getElementById('drop-area');
                 dropArea.innerHTML = `
                     <div class="upload-icon">📄</div>
@@ -418,10 +454,8 @@
                     <p>Нажмите "Загрузить шаблон" для подтверждения</p>
                 `;
                 
-                // Показываем кнопки действий
                 document.getElementById('template-actions').style.display = 'flex';
                 
-                // Добавляем файл в форму
                 const fileInput = document.getElementById('template-file');
                 const dataTransfer = new DataTransfer();
                 dataTransfer.items.add(file);
@@ -430,7 +464,6 @@
         }
         
         function cancelUpload() {
-            // Восстанавливаем исходное состояние
             const dropArea = document.getElementById('drop-area');
             dropArea.innerHTML = `
                 <div class="upload-icon">📤</div>
@@ -438,24 +471,16 @@
                 <p>или нажмите для выбора файла</p>
             `;
             
-            // Скрываем кнопки действий
             document.getElementById('template-actions').style.display = 'none';
-            
-            // Сбрасываем input файла
             document.getElementById('template-file').value = '';
         }
         
         function deleteTemplate(templateName) {
             if (confirm(`Вы уверены, что хотите удалить шаблон "${templateName}"?`)) {
-                // Отправляем запрос на удаление
                 fetch('/orex-ws/delete_template', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        template_name: templateName
-                    })
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({template_name: templateName})
                 })
                 .then(response => response.json())
                 .then(data => {
@@ -488,7 +513,6 @@
                     currentColumn = this.parentElement;
                     startWidth = currentColumn.offsetWidth;
                     
-                    // Находим следующую колонку
                     const columns = Array.from(document.querySelectorAll('th'));
                     const currentIndex = columns.indexOf(currentColumn);
                     if (currentIndex < columns.length - 2) {
@@ -507,11 +531,9 @@
                 const diffX = e.clientX - startX;
                 const newWidth = startWidth + diffX;
                 
-                // Минимальная ширина колонки
                 if (newWidth >= 50) {
                     currentColumn.style.width = `${newWidth}px`;
                     
-                    // Корректируем следующую колонку
                     if (nextColumn) {
                         const nextWidth = nextColumn.offsetWidth - diffX;
                         if (nextWidth >= 50) {
@@ -542,12 +564,10 @@
                 }
             });
             
-            // Сохраняем с именем таблицы, но без лишних символов
             localStorage.setItem(`orex_widths_${"{{ table_name }}"}`, JSON.stringify(widths));
         }
 
         function loadColumnWidths() {
-            // Используем то же имя ключа, что и при сохранении
             const savedWidths = localStorage.getItem(`orex_widths_${"{{ table_name }}"}`);
             if (!savedWidths) return;
             
@@ -565,10 +585,7 @@
         }
 
         function resetColumnWidths() {
-            // Удаляем сохраненные настройки для текущей таблицы
             localStorage.removeItem(`orex_widths_${"{{ table_name }}"}`);
-            
-            // Сбрасываем ширины в таблице
             document.querySelectorAll('th').forEach(column => {
                 column.style.width = '';
             });
