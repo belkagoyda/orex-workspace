@@ -4,6 +4,7 @@
     <title>OREX - {{ table_name }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
+        /* Все существующие стили остаются без изменений */
         * {
             box-sizing: border-box;
             font-family: Arial, sans-serif;
@@ -139,7 +140,7 @@
             <button onclick="window.print()">Печать</button>
             <button class="reset-widths" onclick="resetColumnWidths()">Сбросить ширины</button>
             <!-- Исправленная кнопка для добавления записи -->
-            <button class="add-record" onclick="window.location.href='{{ url_for('vvod') }}?table={{ table_name }}'">
+            <button class="add-record" onclick="window.location.href='{{ url_for('vvod') }}?table={{ table_name }}'" id="add-record-btn">
                 Добавить запись
             </button>
         </div>
@@ -185,6 +186,15 @@
             
             // Инициализация ресайзеров
             initResizers();
+            
+            // Обработчик горячей клавиши "1"
+            document.addEventListener('keydown', function(event) {
+                // Проверяем, что нажата цифра 1 (код 49) и не в поле ввода
+                if (event.key === '1' && event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA') {
+                    event.preventDefault();
+                    document.getElementById('add-record-btn').click();
+                }
+            });
         });
 
         function initResizers() {
@@ -257,11 +267,13 @@
                 }
             });
             
-            localStorage.setItem(`orex_${"{{ table_name }}"}`, JSON.stringify(widths));
+            // Сохраняем с именем таблицы, но без лишних символов
+            localStorage.setItem(`orex_widths_${"{{ table_name }}"}`, JSON.stringify(widths));
         }
 
         function loadColumnWidths() {
-            const savedWidths = localStorage.getItem(`orex_${"{{ table_name }}"} `);
+            // Используем то же имя ключа, что и при сохранении
+            const savedWidths = localStorage.getItem(`orex_widths_${"{{ table_name }}"}`);
             if (!savedWidths) return;
             
             try {
@@ -273,12 +285,15 @@
                     }
                 });
             } catch (e) {
-                console.error('Error loading column widths:', e);
+                console.error('Ошибка загрузки ширин столбцов:', e);
             }
         }
 
         function resetColumnWidths() {
-            localStorage.removeItem(`orex_${"{{ table_name }}"} `);
+            // Удаляем сохраненные настройки для текущей таблицы
+            localStorage.removeItem(`orex_widths_${"{{ table_name }}"}`);
+            
+            // Сбрасываем ширины в таблице
             document.querySelectorAll('th').forEach(column => {
                 column.style.width = '';
             });
