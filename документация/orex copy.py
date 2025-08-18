@@ -368,8 +368,9 @@ def save_record():
         values_str = ', '.join([f':{col}' for col in data.keys()])
         insert_query = text(f"INSERT INTO `{table_name}` ({columns_str}) VALUES ({values_str})")
         
-        with engine.begin() as conn:
+        with engine.connect() as conn:
             conn.execute(insert_query, data)
+            conn.commit()
         
         flash('Запись успешно добавлена!', 'success')
         return redirect(f'/orex-ws/table?name={table_name}')
