@@ -141,17 +141,12 @@
                     
                     {# Определение типа поля #}
                     {% if col.type == 'DATE' or col.name.lower().find('дата') != -1 %}
-                    <input type="text" id="{{ col.name }}" name="{{ col.name }}" 
-                           placeholder="дд.мм.гггг"
-                           pattern="(0[1-9]|[12][0-9]|3[01])\.(0[1-9]|1[012])\.(19|20)\d{2}"
-                           title="Введите дату в формате ДД.ММ.ГГГГ"
-                           {% if not col.nullable and not col.default %}required{% endif %}>
-                {% elif col.type == 'DATETIME' or col.type == 'TIMESTAMP' %}
-                    <input type="text" id="{{ col.name }}" name="{{ col.name }}" 
-                           placeholder="дд.мм.гггг чч:мм"
-                           pattern="(0[1-9]|[12][0-9]|3[01])\.(0[1-9]|1[012])\.(19|20)\d{2} ([01][0-9]|2[0-3]):[0-5][0-9]"
-                           title="Введите дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ"
-                           {% if not col.nullable and not col.default %}required{% endif %}>
+                        <input type="date" id="{{ col.name }}" name="{{ col.name }}"
+                               {% if not col.nullable and not col.default %}required{% endif %}>
+                    
+                    {% elif col.type == 'DATETIME' or col.type == 'TIMESTAMP' %}
+                        <input type="datetime-local" id="{{ col.name }}" name="{{ col.name }}"
+                               {% if not col.nullable and not col.default %}required{% endif %}>
                     
                     {% elif col.type == 'BOOLEAN' or col.name.lower().find('галочка') != -1 %}
                         <label>
@@ -210,14 +205,11 @@
                 }
                 
                 // Автозаполнение даты
-                // Автозаполнение даты в формате dd.mm.yyyy
-                const dateFields = document.querySelectorAll('input[type="text"][placeholder="дд.мм.гггг"]');
-                    if (dateFields.length > 0) {
-                        const today = new Date();
-                        const day = String(today.getDate()).padStart(2, '0');
-                        const month = String(today.getMonth() + 1).padStart(2, '0');
-                        const year = today.getFullYear();
-                        dateFields[0].value = `${day}.${month}.${year}`;
+                const dateFields = document.querySelectorAll('input[type="date"]');
+                if (dateFields.length > 0) {
+                    const today = new Date().toISOString().split('T')[0];
+                    dateFields[0].value = today;
+                }
                 
                 // Автозаполнение времени
                 const datetimeFields = document.querySelectorAll('input[type="datetime-local"]');
