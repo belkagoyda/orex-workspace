@@ -221,5 +221,24 @@
             });
         });
     </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Форматирование даты в dd.mm.yyyy для полей
+            const formatDate = (date) => {
+                const d = new Date(date);
+                return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`;
+            };
+        
+            // Для всех date-полей устанавливаем placeholder
+            document.querySelectorAll('input[type="date"]').forEach(input => {
+                input.setAttribute('placeholder', 'дд.мм.гггг');
+                
+                // Преобразуем значение при отображении
+                if(input.valueAsDate) {
+                    input.value = formatDate(input.valueAsDate);
+                }
+            });
+        });
+        </script>
 </body>
 </html>
