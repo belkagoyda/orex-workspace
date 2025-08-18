@@ -158,8 +158,8 @@
                     {% elif col.name.lower().find('статус') != -1 %}
                         <select id="{{ col.name }}" name="{{ col.name }}"
                                 {% if not col.nullable and not col.default %}required{% endif %}>
-                            <option value="Сделано">Сделано</option>
-                            <option value="Не сделано" selected>Не сделано</option>
+                         <!--   // <option value="Сделано">Сделано</option>
+                          //  <option value="Не сделано" selected>Не сделано</option> -->
                         </select>
                     
                     {% elif col.type in ['TEXT', 'LONGTEXT'] or col.name.lower().find('текст') != -1 or col.name.lower().find('примечание') != -1 %}
@@ -174,8 +174,17 @@
                                    {% if col.default %}readonly{% endif %}
                                    {% if not col.nullable and not col.default %}required{% endif %}>
                         {% else %}
-                            <input type="text" id="{{ col.name }}" name="{{ col.name }}"
-                                   {% if not col.nullable and not col.default %}required{% endif %}>
+                            {# Автокомплит для поля "Краткое содержание" #}
+                            {% if col.name.lower().find('краткое_содержание') != -1 %}
+                                <input type="text" id="{{ col.name }}" name="{{ col.name }}"
+                                       class="topic-field"
+                                       autocomplete="off"
+                                       {% if not col.nullable and not col.default %}required{% endif %}>
+                                <div class="autocomplete-container" id="autocomplete-{{ col.name }}"></div>
+                            {% else %}
+                                <input type="text" id="{{ col.name }}" name="{{ col.name }}"
+                                       {% if not col.nullable and not col.default %}required{% endif %}>
+                            {% endif %}
                         {% endif %}
                     {% endif %}
                 </div>
@@ -239,6 +248,149 @@
                 }
             });
         });
-        </script>
+    </script>
+    <script>
+        // Автокомплит для поля "Краткое содержание"
+        document.addEventListener('DOMContentLoaded', function() {
+            const topicFields = document.querySelectorAll('.topic-field');
+            
+            // Инициализация системы подсказок для каждого поля
+            topicFields.forEach(field => {
+                const containerId = `autocomplete-${field.id}`;
+                const container = document.getElementById(containerId);
+                
+                // Создаем контейнер для подсказок
+                const suggestionsContainer = document.createElement('div');
+                suggestionsContainer.className = 'suggestions';
+                suggestionsContainer.style.display = 'none';
+                container.appendChild(suggestionsContainer);
+                
+                // Загрузка сохраненных подсказок из localStorage
+                const loadSuggestions = () => {
+                    const savedTopics = JSON.parse(localStorage.getItem('topic_suggestions')) || [];
+                    return [...new Set(savedTopics)]; // Убираем дубликаты
+                };
+                
+                // Сохранение подсказок в localStorage
+                const saveSuggestion = (value) => {
+                    if (!value) return;
+                    
+                    const savedTopics = loadSuggestions();
+                    const normalizedValue = value.trim();
+                    
+                    // Добавляем только уникальные значения
+                    if (!savedTopics.includes(normalizedValue)) {
+                        savedTopics.push(normalizedValue);
+                        localStorage.setItem('topic_suggestions', JSON.stringify(savedTopics));
+                    }
+                };
+                
+                // Показ подсказок
+                const showSuggestions = (filter = '') => {
+                    const savedTopics = loadSuggestions();
+                    suggestionsContainer.innerHTML = '';
+                    
+                    if (savedTopics.length === 0) {
+                        suggestionsContainer.style.display = 'none';
+                        return;
+                    }
+                    
+                    // Фильтрация и сортировка подсказок
+                    const filtered = savedTopics
+                        .filter(topic => topic.toLowerCase().includes(filter.toLowerCase()))
+                        .sort();
+                    
+                    if (filtered.length === 0) {
+                        suggestionsContainer.style.display = 'none';
+                        return;
+                    }
+                    
+                    // Создаем элементы подсказок
+                    filtered.forEach(topic => {
+                        const div = document.createElement('div');
+                        div.className = 'suggestion-item';
+                        div.textContent = topic;
+                        
+                        div.addEventListener('click', () => {
+                            field.value = topic;
+                            suggestionsContainer.style.display = 'none';
+                        });
+                        
+                        suggestionsContainer.appendChild(div);
+                    });
+                    
+                    suggestionsContainer.style.display = 'block';
+                };
+                
+                // Обработчики событий
+                field.addEventListener('input', () => {
+                    if (field.value.length > 0) {
+                        showSuggestions(field.value);
+                    } else {
+                        suggestionsContainer.style.display = 'none';
+                    }
+                });
+                
+                field.addEventListener('focus', () => {
+                    if (field.value.length > 0) {
+                        showSuggestions(field.value);
+                    } else {
+                        showSuggestions();
+                    }
+                });
+                
+                document.addEventListener('click', (e) => {
+                    if (!field.contains(e.target) && !suggestionsContainer.contains(e.target)) {
+                        suggestionsContainer.style.display = 'none';
+                    }
+                });
+                
+                // Сохраняем значение при отправке формы
+                field.form.addEventListener('submit', () => {
+                    saveSuggestion(field.value);
+                });
+                
+                // Инициализация подсказок
+                showSuggestions();
+            });
+            
+            // Стили для автокомплита
+            const style = document.createElement('style');
+            style.textContent = `
+                .autocomplete-container {
+                    position: relative;
+                    width: 100%;
+                }
+                
+                .suggestions {
+                    position: absolute;
+                    width: 100%;
+                    max-height: 200px;
+                    overflow-y: auto;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    background: white;
+                    z-index: 1000;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    display: none;
+                }
+                
+                .suggestion-item {
+                    padding: 8px 12px;
+                    cursor: pointer;
+                    border-bottom: 1px solid #eee;
+                }
+                
+                .suggestion-item:last-child {
+                    border-bottom: none;
+                }
+                
+                .suggestion-item:hover {
+                    background-color: #f0f0f0;
+                }
+            `;
+            document.head.appendChild(style);
+        });
+    </script>
 </body>
 </html>
