@@ -159,7 +159,8 @@
                         <select id="{{ col.name }}" name="{{ col.name }}"
                                 {% if not col.nullable and not col.default %}required{% endif %}>
                             <option value="Сделано">Сделано</option>
-                            <option value="Не сделано" selected>Не сделано</option>
+                            <option value="Не сделано">Не сделано</option>
+                            <option value="Ответ не нужен" selected>Ответ не нужен</option>
                         </select>
                     
                     {% elif col.type in ['TEXT', 'LONGTEXT'] or col.name.lower().find('текст') != -1 or col.name.lower().find('примечание') != -1 %}
