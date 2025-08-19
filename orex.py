@@ -411,10 +411,7 @@ def delete_template():
             'message': f'Ошибка при удалении шаблона: {str(e)}'
         }), 500
 
-if __name__ == "__main__":
-    orex.run(host='0.0.0.0', port=5000, debug=True)
-
-# Маршрут для удаления записи
+# Новый маршрут для удаления записи
 @orex.route('/orex-ws/delete_record', methods=['POST'])
 def delete_record():
     if not session.get('logged_in'):
@@ -450,3 +447,6 @@ def delete_record():
         logger.error(f"Delete record error: {str(e)}")
         flash(f'Ошибка при удалении: {str(e)}', 'danger')
         return redirect(url_for('show_table', name=table_name))
+
+if __name__ == "__main__":
+    orex.run(host='0.0.0.0', port=5000, debug=True)
