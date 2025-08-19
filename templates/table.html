@@ -47,6 +47,7 @@
             background: #e0e0e0;
             font-weight: bold;
             user-select: none;
+            position: relative;
         }
         .resizer {
             position: absolute;
@@ -63,6 +64,7 @@
         }
         .action-cell {
             white-space: normal !important;
+            width: 140px;
         }
         td {
             vertical-align: top;
@@ -327,7 +329,7 @@
                             <div class="resizer" data-column="{{ column }}"></div>
                         </th>
                     {% endfor %}
-                    <th>Действие</th>
+                    <th class="action-cell">Действие</th>
                 </tr>
             </thead>
             <tbody id="table-body">
@@ -522,13 +524,13 @@
             }
         }
 
+        // Переработанная функция для изменения ширины столбцов
         function initResizers() {
             const resizers = document.querySelectorAll('.resizer');
             let activeResizer = null;
             let startX = 0;
             let startWidth = 0;
             let currentColumn = null;
-            let nextColumn = null;
 
             resizers.forEach(resizer => {
                 resizer.addEventListener('mousedown', function(e) {
@@ -538,11 +540,16 @@
                     currentColumn = this.parentElement;
                     startWidth = currentColumn.offsetWidth;
                     
-                    const columns = Array.from(document.querySelectorAll('th'));
-                    const currentIndex = columns.indexOf(currentColumn);
-                    if (currentIndex < columns.length - 2) {
-                        nextColumn = columns[currentIndex + 1];
-                    }
+                    // Запоминаем исходные ширины всех столбцов
+                    const table = document.getElementById('resizable-table');
+                    const headers = table.querySelectorAll('th');
+                    const originalWidths = [];
+                    headers.forEach(header => {
+                        originalWidths.push(header.offsetWidth);
+                    });
+                    
+                    // Сохраняем в data-атрибуты
+                    table.dataset.originalWidths = JSON.stringify(originalWidths);
                     
                     activeResizer.classList.add('active');
                     document.addEventListener('mousemove', handleMouseMove);
@@ -551,21 +558,16 @@
             });
 
             function handleMouseMove(e) {
-                if (!activeResizer) return;
+                if (!activeResizer || !currentColumn) return;
                 
                 const diffX = e.clientX - startX;
-                const newWidth = startWidth + diffX;
+                let newWidth = startWidth + diffX;
                 
-                if (newWidth >= 50) {
-                    currentColumn.style.width = `${newWidth}px`;
-                    
-                    if (nextColumn) {
-                        const nextWidth = nextColumn.offsetWidth - diffX;
-                        if (nextWidth >= 50) {
-                            nextColumn.style.width = `${nextWidth}px`;
-                        }
-                    }
-                }
+                // Ограничиваем минимальную ширину
+                if (newWidth < 50) newWidth = 50;
+                
+                // Устанавливаем новую ширину только для текущего столбца
+                currentColumn.style.width = `${newWidth}px`;
             }
 
             function handleMouseUp() {
@@ -573,6 +575,7 @@
                     activeResizer.classList.remove('active');
                     saveColumnWidths();
                     activeResizer = null;
+                    currentColumn = null;
                     document.removeEventListener('mousemove', handleMouseMove);
                     document.removeEventListener('mouseup', handleMouseUp);
                 }
@@ -580,12 +583,13 @@
         }
 
         function saveColumnWidths() {
-            const columns = document.querySelectorAll('th');
+            const table = document.getElementById('resizable-table');
+            const headers = table.querySelectorAll('th');
             const widths = {};
             
-            columns.forEach(column => {
-                if (column.dataset.column) {
-                    widths[column.dataset.column] = column.style.width || getComputedStyle(column).width;
+            headers.forEach(header => {
+                if (header.dataset.column) {
+                    widths[header.dataset.column] = header.style.width || getComputedStyle(header).width;
                 }
             });
             
@@ -610,10 +614,25 @@
         }
 
         function resetColumnWidths() {
+            const table = document.getElementById('resizable-table');
+            const headers = table.querySelectorAll('th');
+            
+            // Восстанавливаем исходные ширины из data-атрибутов
+            if (table.dataset.originalWidths) {
+                const originalWidths = JSON.parse(table.dataset.originalWidths);
+                headers.forEach((header, index) => {
+                    if (index < originalWidths.length) {
+                        header.style.width = `${originalWidths[index]}px`;
+                    }
+                });
+            } else {
+                // Просто сбрасываем стили
+                headers.forEach(header => {
+                    header.style.width = '';
+                });
+            }
+            
             localStorage.removeItem(`orex_widths_${"{{ table_name }}"}`);
-            document.querySelectorAll('th').forEach(column => {
-                column.style.width = '';
-            });
         }
     </script>
 </body>
