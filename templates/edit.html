@@ -171,6 +171,7 @@
                                 {% if not col.nullable and not col.default %}required{% endif %}>
                             <option value="Сделано" {% if record[col.name] == 'Сделано' %}selected{% endif %}>Сделано</option>
                             <option value="Не сделано" {% if record[col.name] == 'Не сделано' %}selected{% endif %}>Не сделано</option>
+                            <option value="Ответ не нужен" {% if record[col.name] == 'Ответ не нужен' %}selected{% endif %}>Не сделано</option>
                         </select>
                     
                     {% elif col.name.lower().find('краткое_содержание') != -1 %}
