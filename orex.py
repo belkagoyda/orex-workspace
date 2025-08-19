@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, s
 from sqlalchemy import create_engine, inspect, text
 import os
 import io
-from datetime import datetime
+from datetime import datetime, date
 import tempfile
 import shutil
 import zipfile
@@ -91,7 +91,7 @@ def get_template_list():
         logger.error(f"Error listing templates: {str(e)}")
         return []
 
-# Функция для обработки шаблона (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+# Функция для обработки шаблона
 def process_odt_template(template_path, data):
     """Обрабатывает ODT шаблон, подставляя данные"""
     # Создаем временную папку для работы
@@ -295,7 +295,6 @@ def show_table():
         logger.error(f"Show table error: {str(e)}")
         return render_template('error.html', error=str(e))
 
-# Обновленный маршрут для формы добавления записи
 @orex.route('/orex-ws/vvod', methods=['GET'])
 def vvod():
     if not session.get('logged_in'):
@@ -321,7 +320,6 @@ def vvod():
         logger.error(f"Vvod error: {str(e)}")
         return render_template('error.html', error=str(e))
 
-# Маршрут для сохранения записи
 @orex.route('/orex-ws/save_record', methods=['POST'])
 def save_record():
     if not session.get('logged_in'):
@@ -379,7 +377,121 @@ def save_record():
         flash(f'Ошибка при сохранении: {str(e)}', 'danger')
         return redirect(url_for('vvod', table=table_name))
 
-# Маршрут для удаления шаблонов
+@orex.route('/orex-ws/edit', methods=['GET'])
+def edit_record():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    table_name = request.args.get('table_name')
+    row_id = request.args.get('row_id')
+    
+    if not table_name or not row_id:
+        return redirect(url_for('base'))
+    
+    try:
+        # Получаем метаданные таблицы
+        columns_meta = get_table_metadata(table_name)
+        visible_columns = [col for col in columns_meta if not col['autoincrement']]
+        
+        # Определяем первичный ключ
+        inspector = inspect(engine)
+        primary_keys = inspector.get_pk_constraint(table_name)['constrained_columns']
+        primary_key = primary_keys[0] if primary_keys else None
+        
+        # Получаем запись для редактирования
+        with engine.connect() as conn:
+            query = text(f"SELECT * FROM `{table_name}` WHERE `{primary_key}` = :id")
+            result = conn.execute(query, {'id': row_id})
+            record = result.mappings().first()
+            
+        if not record:
+            flash('Запись не найдена', 'danger')
+            return redirect(url_for('show_table', name=table_name))
+        
+        # Форматируем даты для HTML-полей
+        formatted_record = dict(record)
+        for key, value in formatted_record.items():
+            if isinstance(value, datetime):
+                formatted_record[key] = value.strftime('%Y-%m-%dT%H:%M')
+            elif isinstance(value, date):
+                formatted_record[key] = value.strftime('%Y-%m-%d')
+        
+        return render_template('edit.html',
+                              table_name=table_name,
+                              columns=visible_columns,
+                              record=formatted_record,
+                              primary_key=primary_key)
+    
+    except Exception as e:
+        logger.error(f"Edit record error: {str(e)}")
+        flash(f'Ошибка при открытии записи: {str(e)}', 'danger')
+        return redirect(url_for('show_table', name=table_name))
+
+@orex.route('/orex-ws/update_record', methods=['POST'])
+def update_record():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    table_name = request.form.get('table_name')
+    primary_key_value = request.form.get('primary_key_value')
+    
+    if not table_name or not primary_key_value:
+        return redirect(url_for('base'))
+    
+    try:
+        # Получаем метаданные таблицы
+        columns_meta = get_table_metadata(table_name)
+        inspector = inspect(engine)
+        primary_keys = inspector.get_pk_constraint(table_name)['constrained_columns']
+        primary_key = primary_keys[0] if primary_keys else None
+        
+        data = {}
+        for col in columns_meta:
+            col_name = col['name']
+            
+            # Пропускаем автоинкрементные поля и первичный ключ
+            if col['autoincrement'] or col_name == primary_key:
+                continue
+                
+            form_value = request.form.get(col_name)
+            
+            # Обработка значений
+            if form_value is None or form_value == '':
+                if col['nullable']:
+                    data[col_name] = None
+                elif col['default'] is not None:
+                    continue
+                else:
+                    flash(f'Поле "{col_name}" обязательно для заполнения', 'danger')
+                    return redirect(url_for('edit_record', table_name=table_name, row_id=primary_key_value))
+            else:
+                if col['type'] == 'BOOLEAN' or 'галочка' in col_name.lower():
+                    data[col_name] = 1 if form_value == '1' else 0
+                elif col['type'] == 'DATE' and form_value:
+                    data[col_name] = datetime.strptime(form_value, '%Y-%m-%d').date()
+                elif col['type'] == 'DATETIME' and form_value:
+                    data[col_name] = datetime.strptime(form_value, '%Y-%m-%dT%H:%M')
+                else:
+                    data[col_name] = form_value
+        
+        # Строим UPDATE запрос
+        set_clause = ', '.join([f'`{col}` = :{col}' for col in data.keys()])
+        update_query = text(f"UPDATE `{table_name}` SET {set_clause} WHERE `{primary_key}` = :pk_value")
+        
+        # Добавляем значение первичного ключа
+        data['pk_value'] = primary_key_value
+        
+        with engine.begin() as conn:
+            conn.execute(update_query, data)
+        
+        flash('Запись успешно обновлена!', 'success')
+        return redirect(f'/orex-ws/table?name={table_name}')
+    
+    except Exception as e:
+        logger.error(f"Update record error: {str(e)}")
+        flash(f'Ошибка при обновлении: {str(e)}', 'danger')
+        return redirect(url_for('edit_record', table_name=table_name, row_id=primary_key_value))
+
 @orex.route('/orex-ws/delete_template', methods=['POST'])
 def delete_template():
     if not session.get('logged_in'):
@@ -411,7 +523,6 @@ def delete_template():
             'message': f'Ошибка при удалении шаблона: {str(e)}'
         }), 500
 
-# Новый маршрут для удаления записи
 @orex.route('/orex-ws/delete_record', methods=['POST'])
 def delete_record():
     if not session.get('logged_in'):

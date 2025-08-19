@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Редактирование записи в {{ table_name }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        body {
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .form-container {
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h1 {
+            margin-top: 0;
+            color: #333;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .field-info {
+            font-size: 0.85em;
+            color: #666;
+            font-style: italic;
+            margin-top: 3px;
+        }
+        .required::after {
+            content: " *";
+            color: red;
+        }
+        input[type="text"],
+        input[type="number"],
+        input[type="date"],
+        input[type="datetime-local"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        input[type="checkbox"] {
+            width: auto;
+            transform: scale(1.2);
+            margin-right: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #4a6fa5;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #3a5a8a;
+        }
+        .back-link {
+            display: inline-block;
+            margin-top: 15px;
+            color: #4a6fa5;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .save-btn {
+            background: #4a8f5a;
+        }
+        .save-btn:hover {
+            background: #3a7f4a;
+        }
+        .flash-message {
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+        .flash-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .flash-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        /* Стили для кастомного ввода краткого содержания */
+        .summary-container {
+            position: relative;
+        }
+        .custom-summary-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            margin-top: 5px;
+            display: none;
+        }
+        .summary-select {
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <h1>Редактирование записи в таблице: {{ table_name }}</h1>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        
+        <form method="POST" action="{{ url_for('update_record') }}">
+            <input type="hidden" name="table_name" value="{{ table_name }}">
+            <input type="hidden" name="primary_key_value" value="{{ record[primary_key] }}">
+            
+            {% for col in columns %}
+                <div class="form-group">
+                    <label for="{{ col.name }}" class="{% if not col.nullable and not col.default %}required{% endif %}">
+                        {{ col.name }}
+                    </label>
+                    
+                    {% if col.default %}
+                        <div class="field-info">По умолчанию: {{ col.default }}</div>
+                    {% endif %}
+                    
+                    {% if col.type == 'DATE' or col.name.lower().find('дата') != -1 %}
+                        <input type="date" id="{{ col.name }}" name="{{ col.name }}"
+                               value="{{ record[col.name] }}"
+                               {% if not col.nullable and not col.default %}required{% endif %}>
+                    
+                    {% elif col.type == 'DATETIME' or col.type == 'TIMESTAMP' %}
+                        <input type="datetime-local" id="{{ col.name }}" name="{{ col.name }}"
+                               value="{{ record[col.name] }}"
+                               {% if not col.nullable and not col.default %}required{% endif %}>
+                    
+                    {% elif col.type == 'BOOLEAN' or col.name.lower().find('галочка') != -1 %}
+                        <label>
+                            <input type="hidden" name="{{ col.name }}" value="0">
+                            <input type="checkbox" id="{{ col.name }}" name="{{ col.name }}" value="1"
+                                   {% if record[col.name] %}checked{% endif %}>
+                            Отмечено
+                        </label>
+                    
+                    {% elif col.name.lower().find('статус') != -1 %}
+                        <select id="{{ col.name }}" name="{{ col.name }}"
+                                {% if not col.nullable and not col.default %}required{% endif %}>
+                            <option value="Сделано" {% if record[col.name] == 'Сделано' %}selected{% endif %}>Сделано</option>
+                            <option value="Не сделано" {% if record[col.name] == 'Не сделано' %}selected{% endif %}>Не сделано</option>
+                        </select>
+                    
+                    {% elif col.name.lower().find('краткое_содержание') != -1 %}
+                        <div class="summary-container">
+                            <select id="{{ col.name }}_select" class="summary-select"
+                                    {% if not col.nullable and not col.default %}required{% endif %}>
+                                <!-- Варианты будут добавлены через JS -->
+                            </select>
+                            <input type="text" id="{{ col.name }}_custom" class="custom-summary-input" 
+                                   placeholder="Введите свое значение" value="{{ record[col.name] }}">
+                            <input type="hidden" id="{{ col.name }}" name="{{ col.name }}" value="{{ record[col.name] }}">
+                        </div>
+                    
+                    {% elif col.type in ['TEXT', 'LONGTEXT'] or col.name.lower().find('текст') != -1 or col.name.lower().find('примечание') != -1 %}
+                        <textarea id="{{ col.name }}" name="{{ col.name }}" rows="3"
+                                  {% if not col.nullable and not col.default %}required{% endif %}>{{ record[col.name] }}</textarea>
+                    
+                    {% else %}
+                        {% if col.name.lower().find('префикс') != -1 or col.name.lower().find('код') != -1 %}
+                            <input type="text" id="{{ col.name }}" name="{{ col.name }}" 
+                                   value="{{ record[col.name] }}"
+                                   {% if col.default %}readonly{% endif %}
+                                   {% if not col.nullable and not col.default %}required{% endif %}>
+                        {% else %}
+                            <input type="text" id="{{ col.name }}" name="{{ col.name }}"
+                                   value="{{ record[col.name] }}"
+                                   {% if not col.nullable and not col.default %}required{% endif %}>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            {% endfor %}
+            
+            <div>
+                <button type="submit" class="save-btn">Обновить</button>
+            </div>
+        </form>
+        <a href="{{ url_for('show_table', name=table_name) }}" class="back-link">← Назад к таблице</a>
+    </div>
+    
+    <script>
+        // Автоматически фокусируемся на первом доступном поле
+        document.addEventListener('DOMContentLoaded', function() {
+            const firstInput = document.querySelector('input:not([readonly]):not([type="hidden"]), select, textarea');
+            if (firstInput) firstInput.focus();
+
+            // Инициализация системы для Краткого содержания
+            const initSummarySystem = () => {
+                // Безопасные дефолтные значения
+                const defaultOptions = [
+                    'Техническое обслуживание',
+                    'Плановый осмотр',
+                    'Консультация'
+                ];
+
+                // Находим все элементы для работы с кратким содержанием
+                const summaryContainers = document.querySelectorAll('.summary-container');
+                
+                summaryContainers.forEach(container => {
+                    const select = container.querySelector('.summary-select');
+                    const customInput = container.querySelector('.custom-summary-input');
+                    const hiddenInput = container.querySelector('input[type="hidden"]');
+                    const fieldName = hiddenInput.id;
+                    
+                    // Загружаем сохраненные варианты из localStorage
+                    const savedOptions = JSON.parse(localStorage.getItem(`${fieldName}_options`)) || defaultOptions;
+                    
+                    // Очищаем и заполняем select
+                    select.innerHTML = '';
+                    
+                    // Добавляем сохраненные варианты
+                    savedOptions.forEach(option => {
+                        const opt = document.createElement('option');
+                        opt.value = option;
+                        opt.textContent = option;
+                        select.appendChild(opt);
+                    });
+                    
+                    // Добавляем опцию для ручного ввода
+                    const customOpt = document.createElement('option');
+                    customOpt.value = '__custom__';
+                    customOpt.textContent = 'Другое (ввести вручную)';
+                    select.appendChild(customOpt);
+                    
+                    // Устанавливаем текущее значение
+                    const currentValue = hiddenInput.value;
+                    if (currentValue && savedOptions.includes(currentValue)) {
+                        select.value = currentValue;
+                    } else if (currentValue) {
+                        select.value = '__custom__';
+                        customInput.style.display = 'block';
+                        customInput.value = currentValue;
+                    } else if (savedOptions.length > 0) {
+                        select.value = savedOptions[0];
+                        hiddenInput.value = savedOptions[0];
+                    }
+                    
+                    // Обработчик изменения select
+                    select.addEventListener('change', function() {
+                        if (this.value === '__custom__') {
+                            customInput.style.display = 'block';
+                            customInput.value = '';
+                            hiddenInput.value = '';
+                            customInput.focus();
+                        } else {
+                            customInput.style.display = 'none';
+                            hiddenInput.value = this.value;
+                        }
+                    });
+                    
+                    // Обработчик ввода текста
+                    customInput.addEventListener('input', function() {
+                        hiddenInput.value = this.value;
+                    });
+                });
+            };
+
+            // Сохраняем новые варианты при отправке формы
+            document.querySelector('form').addEventListener('submit', function() {
+                const summaryContainers = document.querySelectorAll('.summary-container');
+                
+                summaryContainers.forEach(container => {
+                    const select = container.querySelector('.summary-select');
+                    const customInput = container.querySelector('.custom-summary-input');
+                    const hiddenInput = container.querySelector('input[type="hidden"]');
+                    const fieldName = hiddenInput.id;
+                    
+                    if (customInput.style.display === 'block' && customInput.value.trim() !== '') {
+                        const newOption = customInput.value.trim();
+                        const savedOptions = JSON.parse(localStorage.getItem(`${fieldName}_options`)) || [];
+                        
+                        if (!savedOptions.includes(newOption)) {
+                            savedOptions.unshift(newOption);
+                            localStorage.setItem(`${fieldName}_options`, JSON.stringify(savedOptions));
+                        }
+                    }
+                });
+            });
+
+            // Инициализируем систему для Краткого содержания
+            initSummarySystem();
+        });
+    </script>
+</body>
+</html>

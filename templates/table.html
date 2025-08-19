@@ -246,6 +246,7 @@
         .action-buttons {
             display: flex;
             flex-direction: column;
+            gap: 3px;
         }
         /* Новые стили для кнопки скрытия столбца */
         .hide-column-btn {
@@ -276,6 +277,20 @@
         }
         .show-all-columns:hover {
             background: #5a4abd;
+        }
+        /* Стиль для кнопки Изменить */
+        .edit-btn {
+            display: inline-block;
+            padding: 6px 12px;
+            background: #4a6fa5;
+            color: white;
+            text-decoration: none;
+            border-radius: 3px;
+            text-align: center;
+            font-size: 14px;
+        }
+        .edit-btn:hover {
+            background: #3a5a8a;
         }
     </style>
 </head>
@@ -374,6 +389,8 @@
                     {% endfor %}
                     <td class="action-cell">
                         <div class="action-buttons">
+                            <a href="{{ url_for('edit_record', table_name=table_name, row_id=row[primary_key]) }}" class="edit-btn">Изменить</a>
+                            
                             <form method="POST">
                                 <input type="hidden" name="row_id" value="{{ row[primary_key] }}">
                                 {% if templates %}
