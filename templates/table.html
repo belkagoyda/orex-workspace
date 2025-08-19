@@ -27,7 +27,7 @@
                 box-shadow: none;
                 padding: 0;
             }
-            .resizer, .no-print, .template-section {
+            .resizer, .no-print, .template-section, .hide-column-btn {
                 display: none !important;
             }
         }
@@ -247,6 +247,36 @@
             display: flex;
             flex-direction: column;
         }
+        /* Новые стили для кнопки скрытия столбца */
+        .hide-column-btn {
+            position: absolute;
+            top: 2px;
+            right: 10px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            color: #777;
+            font-size: 16px;
+            z-index: 11;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .hide-column-btn:hover {
+            color: #f00;
+        }
+        .hidden-column {
+            display: none !important;
+        }
+        .show-all-columns {
+            background: #6a5acd;
+            color: white;
+        }
+        .show-all-columns:hover {
+            background: #5a4abd;
+        }
     </style>
 </head>
 <body>
@@ -285,6 +315,7 @@
                 Добавить запись
             </button>
             <button class="template-toggle" onclick="toggleTemplateSection()">Шаблоны</button>
+            <button class="show-all-columns" onclick="showAllColumns()">Показать все столбцы</button>
         </div>
         
         <div class="template-section no-print" id="template-section" style="display: none;">
@@ -326,6 +357,7 @@
                     {% for column in columns %}
                         <th data-column="{{ column }}">
                             {{ column }}
+                            <button class="hide-column-btn" onclick="hideColumn('{{ column }}')">×</button>
                             <div class="resizer" data-column="{{ column }}"></div>
                         </th>
                     {% endfor %}
@@ -336,7 +368,7 @@
                 {% for row in rows %}
                 <tr>
                     {% for column in columns %}
-                        <td title="{{ row[column] }}">
+                        <td data-column="{{ column }}" title="{{ row[column] }}">
                             <div class="cell-content">{{ row[column] }}</div>
                         </td>
                     {% endfor %}
@@ -372,6 +404,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             loadColumnWidths();
             initResizers();
+            applyHiddenColumns(); // Применяем сохраненные скрытые столбцы
             
             document.addEventListener('keydown', function(event) {
                 if (event.key === '1' && event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA') {
@@ -522,6 +555,45 @@
                     alert('Ошибка сети: ' + error);
                 });
             }
+        }
+
+        // Функция скрытия столбца
+        function hideColumn(columnName) {
+            // Находим все ячейки с данным столбцом
+            const cells = document.querySelectorAll(`[data-column="${columnName}"]`);
+            cells.forEach(cell => {
+                cell.classList.add('hidden-column');
+            });
+            
+            // Сохраняем состояние в localStorage
+            const hiddenColumns = JSON.parse(localStorage.getItem(`orex_hidden_columns_{{ table_name }}`) || '[]');
+            if (!hiddenColumns.includes(columnName)) {
+                hiddenColumns.push(columnName);
+                localStorage.setItem(`orex_hidden_columns_{{ table_name }}`, JSON.stringify(hiddenColumns));
+            }
+        }
+
+        // Функция показа всех столбцов
+        function showAllColumns() {
+            // Находим все скрытые ячейки
+            const hiddenCells = document.querySelectorAll('.hidden-column');
+            hiddenCells.forEach(cell => {
+                cell.classList.remove('hidden-column');
+            });
+            
+            // Удаляем сохраненные настройки
+            localStorage.removeItem(`orex_hidden_columns_{{ table_name }}`);
+        }
+
+        // Применить сохраненные скрытые столбцы
+        function applyHiddenColumns() {
+            const hiddenColumns = JSON.parse(localStorage.getItem(`orex_hidden_columns_{{ table_name }}`) || []);
+            hiddenColumns.forEach(columnName => {
+                const cells = document.querySelectorAll(`[data-column="${columnName}"]`);
+                cells.forEach(cell => {
+                    cell.classList.add('hidden-column');
+                });
+            });
         }
 
         // Переработанная функция для изменения ширины столбцов
