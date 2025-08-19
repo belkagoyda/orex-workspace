@@ -27,7 +27,7 @@
                 box-shadow: none;
                 padding: 0;
             }
-            .resizer, .no-print, .template-section, .hide-column-btn {
+            .resizer, .no-print, .template-section, .hide-column-btn, .minimize-column-btn {
                 display: none !important;
             }
         }
@@ -65,6 +65,10 @@
         .action-cell {
             white-space: normal !important;
             width: 140px;
+            transition: width 0.3s ease;
+        }
+        .action-cell.minimized {
+            width: 35px !important;
         }
         td {
             vertical-align: top;
@@ -292,6 +296,54 @@
         .edit-btn:hover {
             background: #3a5a8a;
         }
+        /* Новые стили для минимизации столбца действий */
+        .minimize-column-btn {
+            position: absolute;
+            top: 2px;
+            right: 10px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            color: #777;
+            font-size: 16px;
+            z-index: 11;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .minimize-column-btn:hover {
+            color: #f00;
+        }
+        .minimized .action-text {
+            display: none;
+        }
+        .minimized .minimized-letter {
+            display: inline;
+        }
+        .minimized .action-buttons > * {
+            width: 25px;
+            height: 25px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 2px 0;
+        }
+        .minimized .edit-btn {
+            background: #4a8f5a !important; /* Зеленый */
+        }
+        .minimized .delete-btn {
+            background: #f44336 !important; /* Красный */
+        }
+        .minimized .response-btn {
+            background: #4a6fa5 !important; /* Синий */
+        }
+        .minimized-letter {
+            display: none;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -376,7 +428,11 @@
                             <div class="resizer" data-column="{{ column }}"></div>
                         </th>
                     {% endfor %}
-                    <th class="action-cell">Действие</th>
+                    <th class="action-cell" id="action-column">
+                        <span class="action-text">Действие</span>
+                        <span class="minimized-letter">Д</span>
+                        <button class="minimize-column-btn" onclick="toggleActionColumn()">×</button>
+                    </th>
                 </tr>
             </thead>
             <tbody id="table-body">
@@ -389,14 +445,20 @@
                     {% endfor %}
                     <td class="action-cell">
                         <div class="action-buttons">
-                            <a href="{{ url_for('edit_record', table_name=table_name, row_id=row[primary_key]) }}" class="edit-btn">Изменить</a>
+                            <a href="{{ url_for('edit_record', table_name=table_name, row_id=row[primary_key]) }}" class="edit-btn">
+                                <span class="action-text">Изменить</span>
+                                <span class="minimized-letter">З</span>
+                            </a>
                             
                             <form method="POST">
                                 <input type="hidden" name="row_id" value="{{ row[primary_key] }}">
                                 {% if templates %}
                                     <input type="hidden" name="template" class="template-input" value="{{ templates[0] }}">
                                 {% endif %}
-                                <button type="submit">Ответ</button>
+                                <button type="submit" class="response-btn">
+                                    <span class="action-text">Ответ</span>
+                                    <span class="minimized-letter">О</span>
+                                </button>
                             </form>
                             
                             {% if loop.last %}
@@ -404,7 +466,10 @@
                                 <input type="hidden" name="table_name" value="{{ table_name }}">
                                 <input type="hidden" name="row_id" value="{{ row[primary_key] }}">
                                 <input type="hidden" name="primary_key" value="{{ primary_key }}">
-                                <button type="submit" class="delete-btn" onclick="return confirmDelete()">Удалить</button>
+                                <button type="submit" class="delete-btn" onclick="return confirmDelete()">
+                                    <span class="action-text">Удалить</span>
+                                    <span class="minimized-letter">У</span>
+                                </button>
                             </form>
                             {% endif %}
                         </div>
@@ -422,6 +487,7 @@
             loadColumnWidths();
             initResizers();
             applyHiddenColumns(); // Применяем сохраненные скрытые столбцы
+            applyActionColumnState(); // Применяем состояние столбца "Действие"
             
             document.addEventListener('keydown', function(event) {
                 if (event.key === '1' && event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA') {
@@ -611,6 +677,36 @@
                     cell.classList.add('hidden-column');
                 });
             });
+        }
+
+        // Функция переключения состояния столбца "Действие"
+        function toggleActionColumn() {
+            const actionColumn = document.getElementById('action-column');
+            const actionCells = document.querySelectorAll('td.action-cell');
+            const isMinimized = actionColumn.classList.contains('minimized');
+            
+            if (isMinimized) {
+                // Восстанавливаем нормальный вид
+                actionColumn.classList.remove('minimized');
+                actionCells.forEach(cell => cell.classList.remove('minimized'));
+                localStorage.setItem('orex_action_column_minimized', 'false');
+            } else {
+                // Минимизируем столбец
+                actionColumn.classList.add('minimized');
+                actionCells.forEach(cell => cell.classList.add('minimized'));
+                localStorage.setItem('orex_action_column_minimized', 'true');
+            }
+        }
+        
+        // Применить состояние столбца "Действие" при загрузке
+        function applyActionColumnState() {
+            const isMinimized = localStorage.getItem('orex_action_column_minimized') === 'true';
+            if (isMinimized) {
+                const actionColumn = document.getElementById('action-column');
+                const actionCells = document.querySelectorAll('td.action-cell');
+                actionColumn.classList.add('minimized');
+                actionCells.forEach(cell => cell.classList.add('minimized'));
+            }
         }
 
         // Переработанная функция для изменения ширины столбцов
