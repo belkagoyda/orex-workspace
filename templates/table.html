@@ -210,8 +210,6 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
-        
-        /* Новые стили */
         .search-box {
             padding: 6px;
             border: 1px solid #ccc;
@@ -234,6 +232,18 @@
         }
         .template-section {
             margin-top: 15px;
+        }
+        /* Стили для кнопки удаления */
+        .delete-btn {
+            background: #f44336 !important;
+            margin-top: 3px;
+        }
+        .delete-btn:hover {
+            background: #d32f2f !important;
+        }
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
         }
     </style>
 </head>
@@ -329,13 +339,24 @@
                         </td>
                     {% endfor %}
                     <td class="action-cell">
-                        <form method="POST">
-                            <input type="hidden" name="row_id" value="{{ row[primary_key] }}">
-                            {% if templates %}
-                                <input type="hidden" name="template" class="template-input" value="{{ templates[0] }}">
+                        <div class="action-buttons">
+                            <form method="POST">
+                                <input type="hidden" name="row_id" value="{{ row[primary_key] }}">
+                                {% if templates %}
+                                    <input type="hidden" name="template" class="template-input" value="{{ templates[0] }}">
+                                {% endif %}
+                                <button type="submit">Ответ</button>
+                            </form>
+                            
+                            {% if loop.last %}
+                            <form method="POST" action="{{ url_for('delete_record') }}">
+                                <input type="hidden" name="table_name" value="{{ table_name }}">
+                                <input type="hidden" name="row_id" value="{{ row[primary_key] }}">
+                                <input type="hidden" name="primary_key" value="{{ primary_key }}">
+                                <button type="submit" class="delete-btn" onclick="return confirmDelete()">Удалить</button>
+                            </form>
                             {% endif %}
-                            <button type="submit" style="width:100%">Ответ</button>
-                        </form>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -435,6 +456,10 @@
         function toggleTemplateSection() {
             const section = document.getElementById('template-section');
             section.style.display = section.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        function confirmDelete() {
+            return confirm('Вы уверены, что хотите удалить последнюю запись?');
         }
 
         function handleFileSelect(files) {

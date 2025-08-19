@@ -413,3 +413,40 @@ def delete_template():
 
 if __name__ == "__main__":
     orex.run(host='0.0.0.0', port=5000, debug=True)
+
+# Маршрут для удаления записи
+@orex.route('/orex-ws/delete_record', methods=['POST'])
+def delete_record():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    table_name = request.form['table_name']
+    row_id = request.form['row_id']
+    primary_key = request.form['primary_key']
+    
+    try:
+        with engine.begin() as conn:
+            # Получаем текущий максимальный ID
+            result = conn.execute(text(f"SELECT MAX(`{primary_key}`) as max_id FROM `{table_name}`"))
+            max_id_row = result.fetchone()
+            current_max = max_id_row['max_id'] if max_id_row else None
+            
+            # Проверяем, что удаляемая запись - последняя
+            if current_max is None or int(row_id) != current_max:
+                flash('Можно удалять только последнюю запись!', 'danger')
+                return redirect(url_for('show_table', name=table_name))
+            
+            # Удаляем запись
+            conn.execute(text(f"DELETE FROM `{table_name}` WHERE `{primary_key}` = :id"), {'id': row_id})
+            
+            # Устанавливаем автоинкремент на значение удаленной записи
+            new_auto_increment = int(row_id)
+            conn.execute(text(f"ALTER TABLE `{table_name}` AUTO_INCREMENT = {new_auto_increment}"))
+        
+        flash('Запись успешно удалена', 'success')
+        return redirect(f'/orex-ws/table?name={table_name}')
+    
+    except Exception as e:
+        logger.error(f"Delete record error: {str(e)}")
+        flash(f'Ошибка при удалении: {str(e)}', 'danger')
+        return redirect(url_for('show_table', name=table_name))
