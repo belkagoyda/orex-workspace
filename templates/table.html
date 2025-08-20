@@ -28,8 +28,14 @@
                 padding: 0;
             }
             .resizer, .no-print, .template-section, .hide-column-btn, .minimize-column-btn,
-            .action-cell, .back-link {
+            .action-column-header, .action-column-cell, .back-link {
                 display: none !important;
+            }
+            table {
+                width: 100% !important;
+            }
+            th, td {
+                width: auto !important;
             }
         }
         table {
@@ -429,7 +435,7 @@
                             <div class="resizer" data-column="{{ column }}"></div>
                         </th>
                     {% endfor %}
-                    <th class="action-cell no-print" id="action-column">
+                    <th class="action-cell action-column-header" id="action-column">
                         <span class="action-text">Действие</span>
                         <span class="minimized-letter">Д</span>
                         <button class="minimize-column-btn" onclick="toggleActionColumn()">×</button>
@@ -444,7 +450,7 @@
                             <div class="cell-content">{{ row[column] }}</div>
                         </td>
                     {% endfor %}
-                    <td class="action-cell no-print">
+                    <td class="action-cell action-column-cell">
                         <div class="action-buttons">
                             <a href="{{ url_for('edit_record', table_name=table_name, row_id=row[primary_key]) }}" class="edit-btn">
                                 <span class="action-text">Изменить</span>
