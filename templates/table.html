@@ -551,7 +551,34 @@
                 const files = dt.files;
                 handleFileSelect(files);
             }
+            
+            // Форматируем даты в русский формат
+            formatRussianDates();
         });
+
+        // Функция для форматирования дат в русский формат
+        function formatRussianDates() {
+            const cells = document.querySelectorAll('td:not(.action-cell) .cell-content');
+            cells.forEach(cell => {
+                const text = cell.textContent.trim();
+                
+                // Проверяем, является ли содержимое датой в формате YYYY-MM-DD
+                const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+                if (dateRegex.test(text)) {
+                    const parts = text.split('-');
+                    cell.textContent = `${parts[2]}.${parts[1]}.${parts[0]}`;
+                }
+                
+                // Проверяем, является ли содержимое датой с временем (YYYY-MM-DD HH:MM:SS)
+                const datetimeRegex = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+                if (datetimeRegex.test(text)) {
+                    const datePart = text.split(' ')[0];
+                    const timePart = text.split(' ')[1];
+                    const parts = datePart.split('-');
+                    cell.textContent = `${parts[2]}.${parts[1]}.${parts[0]} ${timePart}`;
+                }
+            });
+        }
 
         function filterTable() {
             const input = document.getElementById('search-input');
