@@ -1,2 +1,4 @@
 # orex-workspace
-OREX (Orange-pi Resource EXtension) Workspace. База: OrPi-Zero3 + Armbian + Apache + PHP7.4. Включает веб-сервисы (Kanboard, TinyFileManager, Adminer) + немного самописного Python бэкенда. Компактная рабочая среда для организации работы скромного отдела
+OREX (Orange-pi Resource EXtension) Workspace - это веб-сервис на Python/Flask для работы с таблицами БД MySQL. Умеет работать с любыми таблицами, добавлять/удалять/редактировать записи, подставлять данные из таблиц в шаблоны .odt. Компактная рабочая среда для организации работы скромного отдела.
+База: OrPi-Zero3 + Armbian + Apache + PHP7.4+
+// Собственно создавать таблицы и базы орех пока не умеет (рекомендуем для этого Adminer)
