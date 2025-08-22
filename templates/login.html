@@ -1,6 +1,41 @@
 <!DOCTYPE html>
 <html>
-<head><title>OREX - Login</title></head>
+<head>
+    <title>OREX - Login</title>
+    <script>
+        function generateFingerprint() {
+            // Простой отпечаток устройства
+            const data = [
+                navigator.userAgent,
+                navigator.language,
+                navigator.hardwareConcurrency || 'unknown',
+                navigator.deviceMemory || 'unknown',
+                screen.width + 'x' + screen.height,
+                new Date().getTimezoneOffset(),
+                navigator.cookieEnabled ? 'cookies' : 'no-cookies'
+            ].join('|');
+            
+            // Хешируем для компактности
+            let hash = 0;
+            for (let i = 0; i < data.length; i++) {
+                hash = ((hash << 5) - hash) + data.charCodeAt(i);
+                hash |= 0; // Convert to 32bit integer
+            }
+            
+            return hash.toString(36);
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Добавляем fingerprint в форму
+            const form = document.querySelector('form');
+            const fingerprintInput = document.createElement('input');
+            fingerprintInput.type = 'hidden';
+            fingerprintInput.name = 'fingerprint';
+            fingerprintInput.value = generateFingerprint();
+            form.appendChild(fingerprintInput);
+        });
+    </script>
+</head>
 <body>
     <h1>Вход в базу данных</h1>
     {% if error %}<p style="color:red;">{{ error }}</p>{% endif %}

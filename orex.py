@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 import uuid
 from werkzeug.utils import secure_filename
 import logging
+import json
 
 # Настройка логгирования
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -28,10 +29,88 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PRINT_TEMPLATES_DIR = os.path.join(BASE_DIR, 'print-templates')
 ALLOWED_EXTENSIONS = {'odt'}
 
+# Security configuration
+SECURITY_WHITELIST = 'security_whitelist.txt'
+SECURITY_BLACKLIST = 'security_blacklist.txt'
+LOGIN_LOG = 'login-log.txt'
+ALLOWED_BROWSERS = ['Chrome', 'Firefox', 'Safari', 'Edge', 'OPR']  # Разрешенные браузеры
+
 # Создаем папку для шаблонов, если ее нет
 if not os.path.exists(PRINT_TEMPLATES_DIR):
     os.makedirs(PRINT_TEMPLATES_DIR)
     logger.info(f"Created templates directory: {PRINT_TEMPLATES_DIR}")
+
+# Функции безопасности
+def check_browser_allowed(user_agent):
+    """Проверяет, разрешен ли браузер"""
+    return any(browser in user_agent for browser in ALLOWED_BROWSERS)
+
+def read_security_list(filename):
+    """Читает security-лист"""
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            return [line.strip() for line in f if line.strip() and not line.startswith('#')]
+    except FileNotFoundError:
+        # Если файла нет, создаем пустой
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write("# Security list\n")
+        return []
+
+def is_ip_banned(ip):
+    """Проверяет, забанен ли IP"""
+    blacklist = read_security_list(SECURITY_BLACKLIST)
+    return any(ip in entry for entry in blacklist)
+
+def add_to_blacklist(ip, reason="Multiple failed attempts"):
+    """Добавляет в черный список"""
+    with open(SECURITY_BLACKLIST, 'a', encoding='utf-8') as f:
+        f.write(f"{ip}|{reason}|{datetime.now()}\n")
+
+def add_to_whitelist(ip, fingerprint):
+    """Добавляет в белый список"""
+    with open(SECURITY_WHITELIST, 'a', encoding='utf-8') as f:
+        f.write(f"{ip}|{fingerprint}|{datetime.now()}\n")
+
+def check_whitelist(ip, fingerprint):
+    """Проверяет, есть ли IP и отпечаток в белом списке"""
+    whitelist = read_security_list(SECURITY_WHITELIST)
+    return any(ip in entry and fingerprint in entry for entry in whitelist)
+
+def log_login_attempt(ip, fingerprint, success, message=""):
+    """Логирует попытку входа"""
+    short_fingerprint = fingerprint[:10] if fingerprint else "none"
+    status = "Success" if success else f"Failure: {message}"
+    
+    with open(LOGIN_LOG, 'a', encoding='utf-8') as f:
+        f.write(f"[{datetime.now()}] {ip} {short_fingerprint} {status}\n")
+
+# Глобальный словарь для отслеживания попыток входа
+login_attempts = {}
+
+@orex.before_request
+def security_check():
+    """Проверка безопасности для всех запросов"""
+    # Пропускаем статические файлы и страницу логина
+    if request.endpoint in ['login', 'static']:
+        return
+    
+    # Проверяем авторизацию
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    # Проверяем безопасность
+    ip = request.remote_addr
+    user_agent = request.user_agent.string
+    fingerprint = session.get('fingerprint', '')
+    
+    # Проверяем бан по IP
+    if is_ip_banned(ip):
+        return f"Доступ запрещен: IP заблокирован", 403
+    
+    # Проверяем соответствие IP и отпечатка в белом списке
+    if not check_whitelist(ip, fingerprint):
+        session.clear()
+        return redirect(url_for('login'))
 
 # Функция для проверки расширения файла
 def allowed_file(filename):
@@ -159,30 +238,85 @@ def process_odt_template(template_path, data):
 def login():
     global engine
     
-    if request.method == 'POST':
-        try:
-            # Берём данные из формы
-            host = request.form['host'] or 'localhost'
-            user = request.form['username']
-            password = request.form['password']
-            database = request.form['database']
-            
-            # Пробуем подключиться
-            engine = create_engine(
-                f"mysql+pymysql://{user}:{password}@{host}/{database}"
-            )
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))  # Простейший запрос для проверки
-            
-            # Сохраняем в сессию только для флага
-            session['logged_in'] = True
-            return redirect(url_for('base'))
-        
-        except Exception as e:
-            logger.error(f"Login error: {str(e)}")
-            return render_template('login.html', error=str(e))
+    ip = request.remote_addr
+    user_agent = request.user_agent.string
     
-    return render_template('login.html')
+    # Проверка безопасности для GET запроса
+    if request.method == 'GET':
+        # Проверяем бан по IP
+        if is_ip_banned(ip):
+            return f"Доступ запрещен: IP заблокирован", 403
+        
+        # Проверяем браузер
+        if not check_browser_allowed(user_agent):
+            return "Доступ запрещен: Неподдерживаемый браузер", 403
+        
+        return render_template('login.html')
+    
+    # Обработка POST запроса
+    fingerprint = request.form.get('fingerprint', '')
+    
+    # Проверяем бан по IP
+    if is_ip_banned(ip):
+        log_login_attempt(ip, fingerprint, False, "Banned IP")
+        return "Доступ запрещен: IP заблокирован", 403
+    
+    # Проверяем браузер
+    if not check_browser_allowed(user_agent):
+        log_login_attempt(ip, fingerprint, False, "Invalid browser")
+        return "Доступ запрещен: Неподдерживаемый браузер", 403
+    
+    # Проверяем попытки входа
+    attempt_key = f"{ip}"
+    if attempt_key in login_attempts and login_attempts[attempt_key] >= 3:
+        add_to_blacklist(ip, "Too many failed attempts")
+        log_login_attempt(ip, fingerprint, False, "Too many attempts")
+        return "Слишком много неудачных попыток. Ваш IP заблокирован.", 403
+    
+    # Проверяем белый список (если IP уже есть в нем)
+    whitelist = read_security_list(SECURITY_WHITELIST)
+    ip_in_whitelist = any(ip in entry for entry in whitelist)
+    
+    if ip_in_whitelist and not check_whitelist(ip, fingerprint):
+        log_login_attempt(ip, fingerprint, False, "Fingerprint mismatch")
+        return "Доступ запрещен: Несоответствие отпечатка устройства", 403
+    
+    try:
+        # Берём данные из формы
+        host = request.form['host'] or 'localhost'
+        user = request.form['username']
+        password = request.form['password']
+        database = request.form['database']
+        
+        # Пробуем подключиться
+        engine = create_engine(
+            f"mysql+pymysql://{user}:{password}@{host}/{database}"
+        )
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))  # Простейший запрос для проверки
+        
+        # Сбрасываем счетчик попыток
+        if attempt_key in login_attempts:
+            del login_attempts[attempt_key]
+        
+        # Добавляем в белый список, если IP еще не там
+        if not ip_in_whitelist:
+            add_to_whitelist(ip, fingerprint)
+        
+        # Сохраняем в сессию
+        session['logged_in'] = True
+        session['fingerprint'] = fingerprint
+        session['ip'] = ip
+        
+        log_login_attempt(ip, fingerprint, True)
+        return redirect(url_for('base'))
+    
+    except Exception as e:
+        # Увеличиваем счетчик попыток
+        login_attempts[attempt_key] = login_attempts.get(attempt_key, 0) + 1
+        logger.error(f"Login error: {str(e)}")
+        log_login_attempt(ip, fingerprint, False, str(e))
+        return render_template('login.html', error=str(e))
 
 @orex.route('/orex-ws/logout')
 def logout():
@@ -196,6 +330,18 @@ def base():
     if not session.get('logged_in'):
         return redirect(url_for('login'))
     
+    # Дополнительная проверка безопасности
+    ip = request.remote_addr
+    fingerprint = session.get('fingerprint', '')
+    
+    if ip != session.get('ip'):
+        session.clear()
+        return redirect(url_for('login'))
+
+    if not check_whitelist(ip, fingerprint):
+        session.clear()
+        return redirect(url_for('login'))
+    
     try:
         inspector = inspect(engine)
         return render_template('base.html', tables=inspector.get_table_names())
@@ -207,6 +353,18 @@ def base():
 @orex.route('/orex-ws/table', methods=['GET', 'POST'])
 def show_table():
     if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    # Дополнительная проверка безопасности
+    ip = request.remote_addr
+    fingerprint = session.get('fingerprint', '')
+    
+    if ip != session.get('ip'):
+        session.clear()
+        return redirect(url_for('login'))
+
+    if not check_whitelist(ip, fingerprint):
+        session.clear()
         return redirect(url_for('login'))
     
     table_name = request.args.get('name')
@@ -300,6 +458,18 @@ def vvod():
     if not session.get('logged_in'):
         return redirect(url_for('login'))
     
+    # Дополнительная проверка безопасности
+    ip = request.remote_addr
+    fingerprint = session.get('fingerprint', '')
+    
+    if ip != session.get('ip'):
+        session.clear()
+        return redirect(url_for('login'))
+
+    if not check_whitelist(ip, fingerprint):
+        session.clear()
+        return redirect(url_for('login'))
+    
     table_name = request.args.get('table')
     if not table_name:
         return redirect(url_for('base'))
@@ -323,6 +493,18 @@ def vvod():
 @orex.route('/orex-ws/save_record', methods=['POST'])
 def save_record():
     if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    # Дополнительная проверка безопасности
+    ip = request.remote_addr
+    fingerprint = session.get('fingerprint', '')
+    
+    if ip != session.get('ip'):
+        session.clear()
+        return redirect(url_for('login'))
+
+    if not check_whitelist(ip, fingerprint):
+        session.clear()
         return redirect(url_for('login'))
     
     table_name = request.form.get('table_name')
@@ -382,6 +564,18 @@ def edit_record():
     if not session.get('logged_in'):
         return redirect(url_for('login'))
     
+    # Дополнительная проверка безопасности
+    ip = request.remote_addr
+    fingerprint = session.get('fingerprint', '')
+    
+    if ip != session.get('ip'):
+        session.clear()
+        return redirect(url_for('login'))
+
+    if not check_whitelist(ip, fingerprint):
+        session.clear()
+        return redirect(url_for('login'))
+    
     table_name = request.args.get('table_name')
     row_id = request.args.get('row_id')
     
@@ -430,6 +624,18 @@ def edit_record():
 @orex.route('/orex-ws/update_record', methods=['POST'])
 def update_record():
     if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    # Дополнительная проверка безопасности
+    ip = request.remote_addr
+    fingerprint = session.get('fingerprint', '')
+    
+    if ip != session.get('ip'):
+        session.clear()
+        return redirect(url_for('login'))
+
+    if not check_whitelist(ip, fingerprint):
+        session.clear()
         return redirect(url_for('login'))
     
     table_name = request.form.get('table_name')
@@ -497,6 +703,18 @@ def delete_template():
     if not session.get('logged_in'):
         return jsonify({'success': False, 'message': 'Требуется авторизация'}), 401
     
+    # Дополнительная проверка безопасности
+    ip = request.remote_addr
+    fingerprint = session.get('fingerprint', '')
+    
+    if ip != session.get('ip'):
+        session.clear()
+        return jsonify({'success': False, 'message': 'Security error'}), 403
+
+    if not check_whitelist(ip, fingerprint):
+        session.clear()
+        return jsonify({'success': False, 'message': 'Security error'}), 403
+    
     try:
         data = request.get_json()
         template_name = data.get('template_name')
@@ -526,6 +744,18 @@ def delete_template():
 @orex.route('/orex-ws/delete_record', methods=['POST'])
 def delete_record():
     if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    # Дополнительная проверка безопасности
+    ip = request.remote_addr
+    fingerprint = session.get('fingerprint', '')
+    
+    if ip != session.get('ip'):
+        session.clear()
+        return redirect(url_for('login'))
+
+    if not check_whitelist(ip, fingerprint):
+        session.clear()
         return redirect(url_for('login'))
     
     table_name = request.form['table_name']
@@ -560,4 +790,15 @@ def delete_record():
         return redirect(url_for('show_table', name=table_name))
 
 if __name__ == "__main__":
+    # Создаем пустые файлы безопасности при первом запуске
+    for filename in [SECURITY_WHITELIST, SECURITY_BLACKLIST, LOGIN_LOG]:
+        if not os.path.exists(filename):
+            with open(filename, 'w', encoding='utf-8') as f:
+                if filename == SECURITY_WHITELIST:
+                    f.write("# Security whitelist: IP|Fingerprint|Date\n")
+                elif filename == SECURITY_BLACKLIST:
+                    f.write("# Security blacklist: IP|Reason|Date\n")
+                elif filename == LOGIN_LOG:
+                    f.write("# Login log: [Date] IP Fingerprint Status\n")
+    
     orex.run(host='0.0.0.0', port=5000, debug=True)
