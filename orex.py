@@ -23,7 +23,13 @@ orex.secret_key = os.urandom(24).hex()  # Автогенерация ключа
 orex.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 
 # Fix для работы за прокси
-orex.wsgi_app = ProxyFix(orex.wsgi_app, x_proto=1, x_host=1)
+orex.wsgi_app = ProxyFix(
+    orex.wsgi_app,
+    x_for=1,       # Количество прокси перед приложением
+    x_proto=1,     # Учитывать заголовок X-Forwarded-Proto
+    x_host=1,      # Учитывать заголовок X-Forwarded-Host
+    x_port=1       # Учитывать заголовок X-Forwarded-Port
+)
 
 # Глобальный движок для упрощения
 engine = None
@@ -45,6 +51,10 @@ if not os.path.exists(PRINT_TEMPLATES_DIR):
     logger.info(f"Created templates directory: {PRINT_TEMPLATES_DIR}")
 
 # Функции безопасности
+def get_remote_address():
+    """Получает реальный IP-адрес клиента за прокси"""
+    return request.headers.get('X-Forwarded-For', request.remote_addr)
+
 def check_browser_allowed(user_agent):
     """Проверяет, разрешен ли браузер"""
     return any(browser in user_agent for browser in ALLOWED_BROWSERS)
@@ -94,6 +104,10 @@ login_attempts = {}
 @orex.before_request
 def security_check():
     """Проверка безопасности для всех запросов"""
+    # Дополнительная проверка для работы за прокси
+    if request.headers.get('X-Forwarded-Proto') == 'https':
+        request.environ['wsgi.url_scheme'] = 'https'
+    
     # Пропускаем статические файлы и страницу логина
     if request.endpoint in ['login', 'static']:
         return
@@ -103,7 +117,7 @@ def security_check():
         return redirect(url_for('login'))
     
     # Проверяем безопасность
-    ip = request.remote_addr
+    ip = get_remote_address()
     user_agent = request.user_agent.string
     fingerprint = session.get('fingerprint', '')
     
@@ -242,7 +256,7 @@ def process_odt_template(template_path, data):
 def login():
     global engine
     
-    ip = request.remote_addr
+    ip = get_remote_address()
     user_agent = request.user_agent.string
     
     # Проверка безопасности для GET запроса
@@ -335,7 +349,7 @@ def base():
         return redirect(url_for('login'))
     
     # Дополнительная проверка безопасности
-    ip = request.remote_addr
+    ip = get_remote_address()
     fingerprint = session.get('fingerprint', '')
     
     if ip != session.get('ip'):
@@ -360,7 +374,7 @@ def show_table():
         return redirect(url_for('login'))
     
     # Дополнительная проверка безопасности
-    ip = request.remote_addr
+    ip = get_remote_address()
     fingerprint = session.get('fingerprint', '')
     
     if ip != session.get('ip'):
@@ -463,7 +477,7 @@ def vvod():
         return redirect(url_for('login'))
     
     # Дополнительная проверка безопасности
-    ip = request.remote_addr
+    ip = get_remote_address()
     fingerprint = session.get('fingerprint', '')
     
     if ip != session.get('ip'):
@@ -500,7 +514,7 @@ def save_record():
         return redirect(url_for('login'))
     
     # Дополнительная проверка безопасности
-    ip = request.remote_addr
+    ip = get_remote_address()
     fingerprint = session.get('fingerprint', '')
     
     if ip != session.get('ip'):
@@ -549,7 +563,7 @@ def save_record():
         
         # Строим запрос на вставку
         columns_str = ', '.join([f'`{col}`' for col in data.keys()])
-        values_str = ', '.join([f':{col}' for col in data.keys()])
+        values_str = ', '.join([f':{col}`' for col in data.keys()])
         insert_query = text(f"INSERT INTO `{table_name}` ({columns_str}) VALUES ({values_str})")
         
         with engine.begin() as conn:
@@ -569,7 +583,7 @@ def edit_record():
         return redirect(url_for('login'))
     
     # Дополнительная проверка безопасности
-    ip = request.remote_addr
+    ip = get_remote_address()
     fingerprint = session.get('fingerprint', '')
     
     if ip != session.get('ip'):
@@ -631,7 +645,7 @@ def update_record():
         return redirect(url_for('login'))
     
     # Дополнительная проверка безопасности
-    ip = request.remote_addr
+    ip = get_remote_address()
     fingerprint = session.get('fingerprint', '')
     
     if ip != session.get('ip'):
@@ -677,15 +691,15 @@ def update_record():
             else:
                 if col['type'] == 'BOOLEAN' or 'галочка' in col_name.lower():
                     data[col_name] = 1 if form_value == '1' else 0
-                elif col['type'] == 'DATE' and form_value:
+                elif col['type'] == 'DATE' и form_value:
                     data[col_name] = datetime.strptime(form_value, '%Y-%m-%d').date()
-                elif col['type'] == 'DATETIME' and form_value:
+                elif col['type'] == 'DATETIME' и form_value:
                     data[col_name] = datetime.strptime(form_value, '%Y-%m-%dT%H:%M')
                 else:
                     data[col_name] = form_value
         
         # Строим UPDATE запрос
-        set_clause = ', '.join([f'`{col}` = :{col}' for col in data.keys()])
+        set_clause = ', '.join([f'`{col}` = :{col}`' for col in data.keys()])
         update_query = text(f"UPDATE `{table_name}` SET {set_clause} WHERE `{primary_key}` = :pk_value")
         
         # Добавляем значение первичного ключа
@@ -708,7 +722,7 @@ def delete_template():
         return jsonify({'success': False, 'message': 'Требуется авторизация'}), 401
     
     # Дополнительная проверка безопасности
-    ip = request.remote_addr
+    ip = get_remote_address()
     fingerprint = session.get('fingerprint', '')
     
     if ip != session.get('ip'):
@@ -751,7 +765,7 @@ def delete_record():
         return redirect(url_for('login'))
     
     # Дополнительная проверка безопасности
-    ip = request.remote_addr
+    ip = get_remote_address()
     fingerprint = session.get('fingerprint', '')
     
     if ip != session.get('ip'):
@@ -805,4 +819,4 @@ if __name__ == "__main__":
                 elif filename == LOGIN_LOG:
                     f.write("# Login log: [Date] IP Fingerprint Status\n")
     
-    orex.run(host='0.0.0.0', port=5000, debug=True)
+    orex.run(host='0.0.0.0', port=5000, debug=False)
