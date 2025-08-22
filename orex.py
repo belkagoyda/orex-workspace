@@ -9,6 +9,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 import uuid
 from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
 import logging
 import json
 
@@ -20,6 +21,9 @@ logger = logging.getLogger(__name__)
 orex = Flask(__name__)
 orex.secret_key = os.urandom(24).hex()  # Автогенерация ключа
 orex.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
+
+# Fix для работы за прокси
+orex.wsgi_app = ProxyFix(orex.wsgi_app, x_proto=1, x_host=1)
 
 # Глобальный движок для упрощения
 engine = None
