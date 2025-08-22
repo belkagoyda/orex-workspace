@@ -691,9 +691,9 @@ def update_record():
             else:
                 if col['type'] == 'BOOLEAN' or 'галочка' in col_name.lower():
                     data[col_name] = 1 if form_value == '1' else 0
-                elif col['type'] == 'DATE' и form_value:
+                elif col['type'] == 'DATE' and form_value:
                     data[col_name] = datetime.strptime(form_value, '%Y-%m-%d').date()
-                elif col['type'] == 'DATETIME' и form_value:
+                elif col['type'] == 'DATETIME' and form_value:
                     data[col_name] = datetime.strptime(form_value, '%Y-%m-%dT%H:%M')
                 else:
                     data[col_name] = form_value
