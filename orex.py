@@ -22,14 +22,8 @@ orex = Flask(__name__)
 orex.secret_key = os.urandom(24).hex()  # Автогенерация ключа
 orex.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 
-# Fix для работы за прокси
-orex.wsgi_app = ProxyFix(
-    orex.wsgi_app,
-    x_for=1,       # Количество прокси перед приложением
-    x_proto=1,     # Учитывать заголовок X-Forwarded-Proto
-    x_host=1,      # Учитывать заголовок X-Forwarded-Host
-    x_port=1       # Учитывать заголовок X-Forwarded-Port
-)
+# Fix для работы за прокси - УПРОЩАЕМ ДО МИНИМУМА
+orex.wsgi_app = ProxyFix(orex.wsgi_app, x_proto=1, x_host=1)
 
 # Глобальный движок для упрощения
 engine = None
@@ -53,6 +47,7 @@ if not os.path.exists(PRINT_TEMPLATES_DIR):
 # Функции безопасности
 def get_remote_address():
     """Получает реальный IP-адрес клиента за прокси"""
+    # Используем заголовок X-Forwarded-For если он есть, иначе обычный remote_addr
     return request.headers.get('X-Forwarded-For', request.remote_addr)
 
 def check_browser_allowed(user_agent):
@@ -104,7 +99,7 @@ login_attempts = {}
 @orex.before_request
 def security_check():
     """Проверка безопасности для всех запросов"""
-    # Дополнительная проверка для работы за прокси
+    # Устанавливаем правильную схему URL для работы за прокси
     if request.headers.get('X-Forwarded-Proto') == 'https':
         request.environ['wsgi.url_scheme'] = 'https'
     
@@ -563,7 +558,7 @@ def save_record():
         
         # Строим запрос на вставку
         columns_str = ', '.join([f'`{col}`' for col in data.keys()])
-        values_str = ', '.join([f':{col}`' for col in data.keys()])
+        values_str = ', '.join([f':{col}' for col in data.keys()])
         insert_query = text(f"INSERT INTO `{table_name}` ({columns_str}) VALUES ({values_str})")
         
         with engine.begin() as conn:
@@ -699,7 +694,7 @@ def update_record():
                     data[col_name] = form_value
         
         # Строим UPDATE запрос
-        set_clause = ', '.join([f'`{col}` = :{col}`' for col in data.keys()])
+        set_clause = ', '.join([f'`{col}` = :{col}' for col in data.keys()])
         update_query = text(f"UPDATE `{table_name}` SET {set_clause} WHERE `{primary_key}` = :pk_value")
         
         # Добавляем значение первичного ключа
@@ -819,4 +814,4 @@ if __name__ == "__main__":
                 elif filename == LOGIN_LOG:
                     f.write("# Login log: [Date] IP Fingerprint Status\n")
     
-    orex.run(host='0.0.0.0', port=5000, debug=False)
+    orex.run(host='0.0.0.0', port=5000, debug=True)
